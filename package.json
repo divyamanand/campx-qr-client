@@ -1,0 +1,27 @@
+{
+  "name": "campx-react-app",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.88",
+    "@napi-rs/canvas-win32-x64-msvc": "^0.1.88",
+    "@zxing/browser": "^0.1.5",
+    "jsqr": "^1.4.0",
+    "pdf-to-img": "^5.0.0",
+    "pdfjs-dist": "^5.4.530",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-qr-barcode-scanner": "^2.1.20",
+    "unpdf": "^1.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "vite": "^5.0.0"
+  }
+}
