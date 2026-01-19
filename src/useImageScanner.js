@@ -1,4 +1,7 @@
 import { useState, useCallback } from "react";
+// import { useState, useCallback } from "react";
+import jsQR from "jsqr";
+import { preprocessImage } from "./preprocessImage";
 
 async function scanSingleImage({ blob, page }) {
   const imageBitmap = await createImageBitmap(blob);
@@ -8,13 +11,35 @@ async function scanSingleImage({ blob, page }) {
 
   canvas.width = imageBitmap.width;
   canvas.height = imageBitmap.height;
-
   ctx.drawImage(imageBitmap, 0, 0);
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
   const found = [];
+
+  // ---- PASS 1: raw image ----
+  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   let qr = jsQR(imageData.data, imageData.width, imageData.height);
+
+  if (!qr) {
+    // ---- PASS 2: preprocessed ----
+    preprocessImage(ctx, canvas.width, canvas.height, {
+      threshold: 140,
+      invert: false,
+    });
+
+    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    qr = jsQR(imageData.data, imageData.width, imageData.height);
+  }
+
+  if (!qr) {
+    // ---- PASS 3: inverted ----
+    preprocessImage(ctx, canvas.width, canvas.height, {
+      threshold: 140,
+      invert: true,
+    });
+
+    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    qr = jsQR(imageData.data, imageData.width, imageData.height);
+  }
 
   if (qr) {
     found.push({
@@ -29,8 +54,6 @@ async function scanSingleImage({ blob, page }) {
   return found;
 }
 
-// import { useState, useCallback } from "react";
-import jsQR from "jsqr";
 
 export function useQrFromImages() {
   const [results, setResults] = useState([]);

@@ -3,7 +3,7 @@ import { useQrFromImages } from "./useImageScanner";
 import { usePdfToImages } from "./usePDF";
 
 function App() {
-  const { convert, loading: pdfLoading } = usePdfToImages({ scale: 9 });
+  const { convert, loading: pdfLoading } = usePdfToImages({ scale: 3 });
   const { scanImages, results, loading: qrLoading } = useQrFromImages();
 
   const handleChange = async (e) => {
