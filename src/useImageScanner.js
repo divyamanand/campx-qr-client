@@ -1,9 +1,4 @@
 import { useState, useCallback } from "react";
-// import { BrowserMultiFormatReader } from "@zxing/browser";
-
-import { BrowserMultiFormatReader } from "@zxing/browser";
-
-const reader = new BrowserMultiFormatReader();
 
 async function scanSingleImage({ blob, page }) {
   const imageBitmap = await createImageBitmap(blob);
@@ -11,55 +6,31 @@ async function scanSingleImage({ blob, page }) {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
 
-  const w = imageBitmap.width;
-  const h = imageBitmap.height;
+  canvas.width = imageBitmap.width;
+  canvas.height = imageBitmap.height;
 
-  canvas.width = w;
-  canvas.height = h;
   ctx.drawImage(imageBitmap, 0, 0);
 
-  const regions = [
-    [0, 0, w / 2, h / 2],
-    [w / 2, 0, w / 2, h / 2],
-    [0, h / 2, w / 2, h / 2],
-    [w / 2, h / 2, w / 2, h / 2],
-    [w / 4, h / 4, w / 2, h / 2], // center
-  ];
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-  const result = {
-    page,
-    qrCode: [],
-    barcode: [],
-  };
+  const found = [];
+  let qr = jsQR(imageData.data, imageData.width, imageData.height);
 
-  for (const [x, y, rw, rh] of regions) {
-    const regionCanvas = document.createElement("canvas");
-    const rctx = regionCanvas.getContext("2d");
-
-    regionCanvas.width = rw;
-    regionCanvas.height = rh;
-
-    rctx.drawImage(canvas, x, y, rw, rh, 0, 0, rw, rh);
-
-    try {
-      const decoded = await reader.decodeFromCanvas(regionCanvas);
-      const value = decoded.getText();
-      const format = decoded.getBarcodeFormat();
-
-      if (format === "QR_CODE") {
-        if (!result.qrCode.includes(value)) result.qrCode.push(value);
-      } else {
-        if (!result.barcode.includes(value)) result.barcode.push(value);
-      }
-    } catch {
-      // no code in this region
-    }
+  if (qr) {
+    found.push({
+      data: qr.data,
+      location: qr.location,
+    });
   }
 
+  canvas.width = canvas.height = 0;
   imageBitmap.close?.();
-  return result;
+
+  return found;
 }
 
+// import { useState, useCallback } from "react";
+import jsQR from "jsqr";
 
 export function useQrFromImages() {
   const [results, setResults] = useState([]);
@@ -75,8 +46,14 @@ export function useQrFromImages() {
       const output = [];
 
       for (const img of images) {
-        const pageResult = await scanSingleImage(img);
-        output.push(pageResult);
+        const qrResults = await scanSingleImage(img);
+
+        if (qrResults.length > 0) {
+          output.push({
+            page: img.page,
+            qrs: qrResults,
+          });
+        }
       }
 
       setResults(output);
@@ -96,3 +73,4 @@ export function useQrFromImages() {
     error,
   };
 }
+
