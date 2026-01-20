@@ -1,10 +1,10 @@
 import "./App.css";
-import { useQrFromImages } from "./useImageScanner";
+import { useImageScanner} from "./useImageScanner";
 import { usePdfToImages } from "./usePDF";
 
 function App() {
   const { convert, loading: pdfLoading } = usePdfToImages({ scale: 3 });
-  const { scanImages, results, loading: qrLoading } = useQrFromImages();
+  const { scanImages, results, loading: qrLoading } = useImageScanner();
 
   const handleChange = async (e) => {
     const file = e.target.files[0];
