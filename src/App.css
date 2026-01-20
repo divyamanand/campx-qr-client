@@ -1,174 +1,202 @@
 :root {
-  --primary: #2563eb;
-  --bg-color: #f8fafc;
+  --primary: #6366f1;
+  --bg: #f8fafc;
   --card-bg: #ffffff;
-  --text-main: #1e293b;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
+  --text-main: #0f172a;
+  --text-sub: #64748b;
   --success: #10b981;
+  --error: #ef4444;
+  --border: #e2e8f0;
 }
 
 body {
-  background-color: var(--bg-color);
+  background: var(--bg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--text-main);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   margin: 0;
-  padding: 0;
-}
-
-.container {
-  max-width: 1000px;
-  margin: 0 auto;
   padding: 2rem;
 }
 
+.app-container {
+  max-width: 1200px; /* Wider container for grid */
+  margin: 0 auto;
+}
+
 .header {
-  margin-bottom: 2rem;
   text-align: center;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.header p {
-  color: var(--text-muted);
-  margin-top: 0.5rem;
-}
-
-.upload-section {
-  background: var(--card-bg);
-  border: 2px dashed var(--border);
-  border-radius: 12px;
-  padding: 3rem;
-  text-align: center;
-  transition: all 0.2s ease;
-  cursor: pointer;
   margin-bottom: 2rem;
 }
 
-.upload-section:hover {
-  border-color: var(--primary);
-  background-color: #eff6ff;
-}
-
-.file-input {
-  display: none;
+.upload-zone {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2.5rem;
 }
 
 .upload-btn {
-  background-color: var(--primary);
+  background: var(--primary);
   color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-weight: 600;
+  padding: 0.8rem 2rem;
+  border-radius: 8px;
   cursor: pointer;
-  display: inline-block;
-  pointer-events: none;
+  font-weight: 500;
+  box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+  transition: all 0.2s;
 }
 
-.results-grid {
+.upload-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 8px -1px rgba(99, 102, 241, 0.4);
+}
+
+.upload-btn input { display: none; }
+
+/* --- GRID LAYOUT --- */
+.cards-container {
   display: grid;
+  /* Auto-fill: Fit as many 280px cards as possible */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1.5rem;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start; /* Prevents cards from stretching explicitly */
 }
 
-.file-card {
+.card {
   background: var(--card-bg);
-  border-radius: 12px;
   border: 1px solid var(--border);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
   overflow: hidden;
+  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
+.card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.card.processing { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.card.error { border-color: var(--error); }
+.card.completed { cursor: pointer; }
+
+/* Card Header: Now designed for small box */
 .card-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--border);
+  padding: 1.25rem;
   display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 100px; /* Ensure uniform height for unexpanded cards */
+  justify-content: center;
+}
+
+/* Flex row for top part of card (Status + Name) */
+.header-top {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  background-color: #f8fafc;
+  gap: 10px;
 }
 
 .filename {
   font-weight: 600;
   font-size: 0.95rem;
-  white-space: nowrap;
+  line-height: 1.4;
+  /* Truncate text after 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
+  word-break: break-word;
 }
 
-.status-badge {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.6rem;
-  border-radius: 99px;
-  font-weight: 600;
-  text-transform: uppercase;
+.status-indicator {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f1f5f9;
 }
 
-.status-processing {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.status-done {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-.card-body {
-  padding: 1rem;
-  flex: 1;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.page-group {
-  margin-bottom: 1rem;
-}
-
-.page-title {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.5rem;
-}
-
-.qr-code-item {
-  background-color: #f1f5f9;
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-family: monospace;
-  font-size: 0.85rem;
-  margin-bottom: 0.5rem;
-  word-break: break-all;
-  border-left: 3px solid var(--primary);
-}
-
-.empty-state {
-  color: var(--text-muted);
-  font-style: italic;
-  font-size: 0.9rem;
-}
-
-.loader {
-  border: 2px solid #f3f3f3;
+/* Circular Spinner */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #e2e8f0;
   border-top: 2px solid var(--primary);
   border-radius: 50%;
-  width: 14px;
-  height: 14px;
   animation: spin 1s linear infinite;
-  display: inline-block;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+.icon-success { color: var(--success); font-size: 1.1rem; }
+.icon-error { color: var(--error); font-weight: bold; }
+.icon-wait { color: var(--text-sub); }
+
+.meta-info {
+  font-size: 0.8rem;
+  color: var(--text-sub);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto; /* Push to bottom of header */
+}
+
+.chevron {
+  font-size: 0.7rem;
+  transition: transform 0.3s;
+}
+.chevron.rotate { transform: rotate(180deg); }
+
+/* Expandable Body */
+.card-body {
+  background: #f8fafc;
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+  max-height: 300px; /* Limit height so one card doesn't ruin the grid */
+  overflow-y: auto;  /* Scroll internally if too long */
+  font-size: 0.85rem;
+}
+
+.page-row {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed #cbd5e1;
+}
+.page-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+.page-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-sub);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.qr-pill {
+  display: inline-block;
+  background: white;
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.qr-fmt {
+  color: var(--primary);
+  font-weight: bold;
+  font-size: 0.7rem;
+  margin-right: 6px;
+}
+
+.qr-txt {
+  font-family: monospace;
+  color: var(--text-main);
+  word-break: break-all;
 }
