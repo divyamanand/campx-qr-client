@@ -1,58 +1,31 @@
-import jsQR from "jsqr";
-import { preprocessImage } from "./preprocessImage";
+import { readBarcodes } from "zxing-wasm/reader";
+
+const readerOptions = {
+  tryHarder: true,
+  formats: [
+    "QRCode",
+    "Code128",
+  ],
+  maxNumberOfSymbols: 2,
+};
+
 
 export async function scanSingleImage({ blob, page }) {
-  const imageBitmap = await createImageBitmap(blob);
+  try {
+    const results = await readBarcodes(blob, readerOptions);
 
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-  canvas.width = imageBitmap.width;
-  canvas.height = imageBitmap.height;
-
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(imageBitmap, 0, 0);
-
-  const found = [];
-
-  // ----------------------------------
-  // PASS 1: Raw image (fast path)
-  // ----------------------------------
-  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  let qr = jsQR(
-    imageData.data,
-    imageData.width,
-    imageData.height,
-    { inversionAttempts: "attemptBoth" }
-  );
-
-  if (qr) {
-    found.push({ data: qr.data, location: qr.location });
-  }
-
-  // ----------------------------------
-  // PASS 2: Preprocessed image
-  // ----------------------------------
-  if (!qr) {
-    const processed = preprocessImage(ctx, canvas.width, canvas.height);
-
-    qr = jsQR(
-      processed.data,
-      processed.width,
-      processed.height,
-      { inversionAttempts: "attemptBoth" }
-    );
-
-    if (qr) {
-      found.push({ data: qr.data, location: qr.location });
+    if (!results || results.length === 0) {
+      return [];
     }
+
+    return results.map((result) => ({
+      data: result.text,
+      format: result.format,
+      position: result.position || null,
+      page,
+    }));
+  } catch (err) {
+    // Decode failures are expected when no QR is present
+    return [];
   }
-
-  // ----------------------------------
-  // Cleanup
-  // ----------------------------------
-  canvas.width = canvas.height = 0;
-  imageBitmap.close?.();
-
-  return found;
 }
