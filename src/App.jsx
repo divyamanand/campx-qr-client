@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import "./App.css";
 import { PDFManager } from "./PDFManager";
 import { Logger, createLogEntry } from "./Logger";
@@ -7,6 +7,21 @@ function App() {
   const [filesQueue, setFilesQueue] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [processingStartTime, setProcessingStartTime] = useState(null);
+  const [totalElapsedTime, setTotalElapsedTime] = useState(0);
+  const [liveElapsed, setLiveElapsed] = useState(0);
+
+  // Live timer during processing
+  useEffect(() => {
+    if (!processingStartTime) {
+      setLiveElapsed(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLiveElapsed(Date.now() - processingStartTime);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [processingStartTime]);
 
   const handleFiles = async (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -43,6 +58,8 @@ function App() {
 
   const processQueue = async (currentQueue) => {
     setIsProcessing(true);
+    const startTime = Date.now();
+    setProcessingStartTime(startTime);
 
     for (const currentItem of currentQueue) {
       if (currentItem.status !== "pending") continue;
@@ -87,14 +104,56 @@ function App() {
       }
     }
 
+    const endTime = Date.now();
+    setTotalElapsedTime((prev) => prev + (endTime - startTime));
+    setProcessingStartTime(null);
     setIsProcessing(false);
+  };
+
+  // Calculate stats for display
+  const completedCount = filesQueue.filter((f) => f.status === "completed").length;
+  const totalCount = filesQueue.length;
+  const errorCount = filesQueue.filter((f) => f.status === "error").length;
+
+  const formatTime = (ms) => {
+    if (ms < 1000) return `${ms}ms`;
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    if (minutes > 0) {
+      return `${minutes}m ${seconds % 60}s`;
+    }
+    return `${seconds}s`;
   };
 
   return (
     <div className="app-container">
       <header className="header">
-        <h1>Batch QR Scanner</h1>
-        <p>Upload PDFs to detect barcodes & QRs</p>
+        <div className="header-main">
+          <h1>Batch QR Scanner</h1>
+          <p>Upload PDFs to detect barcodes & QRs</p>
+        </div>
+        {totalCount > 0 && (
+          <div className="header-stats">
+            <div className="stat-box">
+              <span className="stat-value">{completedCount}/{totalCount}</span>
+              <span className="stat-label">Files</span>
+            </div>
+            {errorCount > 0 && (
+              <div className="stat-box error">
+                <span className="stat-value">{errorCount}</span>
+                <span className="stat-label">Errors</span>
+              </div>
+            )}
+            {(totalElapsedTime > 0 || liveElapsed > 0) && (
+              <div className="stat-box">
+                <span className="stat-value">
+                  {formatTime(isProcessing ? totalElapsedTime + liveElapsed : totalElapsedTime)}
+                </span>
+                <span className="stat-label">Time</span>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="upload-zone">

@@ -104,7 +104,30 @@ export class PDFManager {
   }
 
   /**
+   * Check if all required formats are found in the codes
+   * @param {Array} codes - Array of detected codes
+   * @param {Array} requiredFormats - Array of required format strings
+   * @returns {Object} - { allFound, foundFormats, missingFormats }
+   */
+  checkRequiredFormats(codes, requiredFormats) {
+    if (!requiredFormats || requiredFormats.length === 0) {
+      return { allFound: true, foundFormats: [], missingFormats: [] };
+    }
+
+    const foundFormats = new Set(codes.map((c) => c.format));
+    const missingFormats = requiredFormats.filter((f) => !foundFormats.has(f));
+
+    return {
+      allFound: missingFormats.length === 0,
+      foundFormats: [...foundFormats],
+      missingFormats,
+    };
+  }
+
+  /**
    * Process a single page with retry logic
+   * For page 1: retries until all required formats (QR_CODE + CODE_128) are found or boundaries exhausted
+   * For other pages: returns on first successful scan
    * @param {PDFPageProxy} page - PDF page to process
    * @param {number} pageNumber - Page number
    * @param {string} fileName - File name for tracking
@@ -114,6 +137,14 @@ export class PDFManager {
   async processPage(page, pageNumber, fileName, onLog = null) {
     const scaleSequence = this.generateScaleSequence();
     const attemptedScales = new Set();
+
+    // Only require all formats on first page
+    const requiredFormats = pageNumber === 1 ? this.config.requiredFormats : [];
+
+    // Track best result so far (for first page when we need multiple codes)
+    let bestResult = null;
+    let bestScale = null;
+    let bestRotated = false;
 
     const log = (type, message, extra = {}) => {
       if (onLog) {
@@ -128,7 +159,11 @@ export class PDFManager {
       }
     };
 
-    log("info", "Starting page scan", { scale: this.config.initialScale });
+    if (pageNumber === 1 && requiredFormats.length > 0) {
+      log("info", `Starting page scan - looking for: ${requiredFormats.join(", ")}`, { scale: this.config.initialScale });
+    } else {
+      log("info", "Starting page scan", { scale: this.config.initialScale });
+    }
 
     for (const scale of scaleSequence) {
       // Skip if already attempted this scale
@@ -147,37 +182,44 @@ export class PDFManager {
         // First try: scan original
         log("info", "Scanning image", { scale });
         let result = await this.scanner.scan(imageResult.blob);
+        let rotated = false;
 
-        if (result.success) {
-          log("success", `Found ${result.codes.length} code(s)`, { scale, rotated: false });
-          return {
-            success: true,
-            result,
-            scale,
-            rotated: false,
-            attempts: attemptedScales.size,
-          };
-        }
-
-        // Second try: rotate and scan
-        if (this.config.enableRotation) {
+        // If no success on original, try rotated
+        if (!result.success && this.config.enableRotation) {
           log("retry", "Trying with rotated image", { scale, rotated: true });
           const rotatedBlob = await rotateImage(imageResult.blob, this.config.rotationDegrees);
           result = await this.scanner.scan(rotatedBlob);
+          rotated = true;
+        }
 
-          if (result.success) {
-            log("success", `Found ${result.codes.length} code(s) after rotation`, { scale, rotated: true });
+        if (result.success) {
+          const formatCheck = this.checkRequiredFormats(result.codes, requiredFormats);
+          const formatsFound = result.codes.map((c) => c.format).join(", ");
+
+          // Track best result (most codes found)
+          if (!bestResult || result.codes.length > bestResult.codes.length) {
+            bestResult = result;
+            bestScale = scale;
+            bestRotated = rotated;
+          }
+
+          if (formatCheck.allFound || requiredFormats.length === 0) {
+            // All required formats found (or no requirements)
+            log("success", `Found ${result.codes.length} code(s): ${formatsFound}`, { scale, rotated });
             return {
               success: true,
               result,
               scale,
-              rotated: true,
+              rotated,
               attempts: attemptedScales.size,
             };
+          } else {
+            // Some codes found but not all required formats
+            log("warning", `Found ${result.codes.length} code(s) [${formatsFound}], missing: ${formatCheck.missingFormats.join(", ")}`, { scale, rotated });
           }
+        } else {
+          log("warning", "No codes found at this scale", { scale });
         }
-
-        log("warning", "No codes found at this scale", { scale });
       } catch (err) {
         log("error", `Error: ${err.message}`, { scale });
         console.warn(`Error processing page ${pageNumber} at scale ${scale}:`, err);
@@ -185,8 +227,27 @@ export class PDFManager {
       }
     }
 
-    // All attempts failed
-    log("error", "All retry attempts failed", { attemptCount: attemptedScales.size });
+    // All scales exhausted
+    if (bestResult) {
+      // Return best result even if not all formats found
+      const formatsFound = bestResult.codes.map((c) => c.format).join(", ");
+      log("warning", `Exhausted all scales. Best result: ${bestResult.codes.length} code(s) [${formatsFound}]`, {
+        scale: bestScale,
+        rotated: bestRotated,
+        attemptCount: attemptedScales.size
+      });
+      return {
+        success: true,
+        result: bestResult,
+        scale: bestScale,
+        rotated: bestRotated,
+        attempts: attemptedScales.size,
+        partial: true, // Indicates not all required formats were found
+      };
+    }
+
+    // All attempts failed - no codes found at all
+    log("error", "All retry attempts failed - no codes found", { attemptCount: attemptedScales.size });
     return {
       success: false,
       result: {

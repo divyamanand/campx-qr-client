@@ -23,8 +23,60 @@ body {
 }
 
 .header {
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 2rem;
+}
+
+.header-main {
+  text-align: left;
+}
+
+.header-main h1 {
+  margin: 0 0 0.25rem 0;
+}
+
+.header-main p {
+  margin: 0;
+  color: var(--text-sub);
+}
+
+.header-stats {
+  display: flex;
+  gap: 1rem;
+}
+
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  min-width: 60px;
+}
+
+.stat-box.error {
+  border-color: var(--error);
+  background: #fef2f2;
+}
+
+.stat-box.error .stat-value {
+  color: var(--error);
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-sub);
+  text-transform: uppercase;
 }
 
 .upload-zone {
