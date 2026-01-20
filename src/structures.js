@@ -5,7 +5,7 @@ export const structures = [
         {
             pageNumber: 1,
             totalCodeCount: 2,
-            formats: [{code: "QRCode", count: 1}, {code: "Code12", count: 1}]
+            formats: [{code: "QRCode", count: 1}, {code: "Code128", count: 1}]
         },
         {
             pageNumber: 2,

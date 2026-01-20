@@ -131,6 +131,7 @@ body {
 .card.processing { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .card.error { border-color: var(--error); }
 .card.completed { cursor: pointer; }
+.card.partial { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
 
 /* Card Header: Now designed for small box */
 .card-header {

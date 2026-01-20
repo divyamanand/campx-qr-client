@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import "./App.css";
 import { PDFManager } from "./PDFManager";
 import { Logger, createLogEntry } from "./Logger";
+import { structures } from "./structures";
 
 function App() {
   const [filesQueue, setFilesQueue] = useState([]);
@@ -67,12 +68,14 @@ function App() {
       updateItemStatus(currentItem.id, "processing");
 
       try {
-        // Create a new PDFManager for each file with config
+        // Create a new PDFManager for each file with config and structure
+        // TODO: Allow user to select structure or auto-detect
         const manager = new PDFManager({
           initialScale: 3,
           maxScale: 9,
           minScale: 1,
           enableRotation: true,
+          structure: structures[0], // Use first structure for now
         });
 
         // Process with progress and log callbacks
@@ -184,22 +187,27 @@ function FileCard({ data }) {
   const { name, status, results, progress, error } = data;
 
   const stats = useMemo(() => {
-    if (!results || results.length === 0) return { pages: 0, codes: 0 };
+    if (!results || results.length === 0) return { pages: 0, codes: 0, hasPartial: false };
 
     const totalCodes = results.reduce((acc, pageResult) => {
       const pageSum = pageResult.qrs.reduce((sum, qr) => sum + (qr.ct || 0), 0);
       return acc + pageSum;
     }, 0);
 
+    // Check if any page has partial results (expected codes not found)
+    const hasPartial = results.some((pageResult) => pageResult.partial === true);
+
     return {
       pages: results.length,
       codes: totalCodes,
+      hasPartial,
     };
   }, [results]);
 
   const isProcessing = status === "processing";
   const isComplete = status === "completed";
   const hasData = isComplete && stats.codes > 0;
+  const hasPartialResults = isComplete && stats.hasPartial;
 
   const toggleExpand = () => {
     if (hasData) setExpanded(!expanded);
@@ -207,7 +215,7 @@ function FileCard({ data }) {
 
   return (
     <div
-      className={`card ${status} ${expanded ? "expanded" : ""}`}
+      className={`card ${status} ${expanded ? "expanded" : ""} ${hasPartialResults ? "partial" : ""}`}
       onClick={toggleExpand}
     >
       <div className="card-header">

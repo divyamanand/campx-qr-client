@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
   minScale: 1,
   enableRotation: true,
   rotationDegrees: 180,
+  structure: null, // Structure definition for expected codes per page
 };
 
 /**
@@ -30,14 +31,72 @@ export class PDFManager {
    * @param {number} config.minScale - Minimum scale to try (default: 1)
    * @param {boolean} config.enableRotation - Whether to try rotation on failure (default: true)
    * @param {number} config.rotationDegrees - Degrees to rotate on retry (default: 180)
+   * @param {Object} config.structure - Structure definition with expected codes per page
    */
   constructor(config = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.scanner = new ScanImage();
     this.pdfToImage = new PDFToImage();
 
-    // Results storage: { fileName: { pageNumber: { result, scale, rotated } } }
+    // Results storage: { fileName: { structureId, pages: { pageNumber: { result, scale, rotated } } } }
     this.allPdfFiles = {};
+  }
+
+  /**
+   * Get expected codes for a specific page from structure
+   * @param {number} pageNumber - Page number to get expected codes for
+   * @returns {Object|null} - { totalCodeCount, formats } or null if no structure/page defined
+   */
+  getPageExpectation(pageNumber) {
+    if (!this.config.structure || !this.config.structure.format) {
+      return null;
+    }
+
+    const pageFormat = this.config.structure.format.find(
+      (p) => p.pageNumber === pageNumber
+    );
+
+    return pageFormat || null;
+  }
+
+  /**
+   * Check if scan result meets page expectations
+   * @param {Array} codes - Array of detected codes
+   * @param {Object} expectation - Expected codes { totalCodeCount, formats: [{code, count}] }
+   * @returns {Object} - { met, foundCount, expectedCount, missingFormats }
+   */
+  checkPageExpectation(codes, expectation) {
+    if (!expectation) {
+      // No expectation - any result is acceptable
+      return { met: true, foundCount: codes.length, expectedCount: 0, missingFormats: [] };
+    }
+
+    // If totalCodeCount is 0, page expects no codes
+    if (expectation.totalCodeCount === 0) {
+      return { met: true, foundCount: codes.length, expectedCount: 0, missingFormats: [] };
+    }
+
+    // Count codes by format
+    const foundCounts = {};
+    for (const code of codes) {
+      foundCounts[code.format] = (foundCounts[code.format] || 0) + 1;
+    }
+
+    // Check each expected format
+    const missingFormats = [];
+    for (const expected of expectation.formats) {
+      const foundCount = foundCounts[expected.code] || 0;
+      if (foundCount < expected.count) {
+        missingFormats.push(`${expected.code} (found ${foundCount}/${expected.count})`);
+      }
+    }
+
+    return {
+      met: missingFormats.length === 0 && codes.length >= expectation.totalCodeCount,
+      foundCount: codes.length,
+      expectedCount: expectation.totalCodeCount,
+      missingFormats,
+    };
   }
 
   /**
@@ -104,30 +163,8 @@ export class PDFManager {
   }
 
   /**
-   * Check if all required formats are found in the codes
-   * @param {Array} codes - Array of detected codes
-   * @param {Array} requiredFormats - Array of required format strings
-   * @returns {Object} - { allFound, foundFormats, missingFormats }
-   */
-  checkRequiredFormats(codes, requiredFormats) {
-    if (!requiredFormats || requiredFormats.length === 0) {
-      return { allFound: true, foundFormats: [], missingFormats: [] };
-    }
-
-    const foundFormats = new Set(codes.map((c) => c.format));
-    const missingFormats = requiredFormats.filter((f) => !foundFormats.has(f));
-
-    return {
-      allFound: missingFormats.length === 0,
-      foundFormats: [...foundFormats],
-      missingFormats,
-    };
-  }
-
-  /**
-   * Process a single page with retry logic
-   * For page 1: retries until all required formats (QR_CODE + CODE_128) are found or boundaries exhausted
-   * For other pages: returns on first successful scan
+   * Process a single page with retry logic based on structure expectations
+   * Retries until expected codes are found or scale boundaries exhausted
    * @param {PDFPageProxy} page - PDF page to process
    * @param {number} pageNumber - Page number
    * @param {string} fileName - File name for tracking
@@ -138,10 +175,10 @@ export class PDFManager {
     const scaleSequence = this.generateScaleSequence();
     const attemptedScales = new Set();
 
-    // Only require all formats on first page
-    const requiredFormats = pageNumber === 1 ? this.config.requiredFormats : [];
+    // Get page expectation from structure
+    const expectation = this.getPageExpectation(pageNumber);
 
-    // Track best result so far (for first page when we need multiple codes)
+    // Track best result so far
     let bestResult = null;
     let bestScale = null;
     let bestRotated = false;
@@ -159,10 +196,29 @@ export class PDFManager {
       }
     };
 
-    if (pageNumber === 1 && requiredFormats.length > 0) {
-      log("info", `Starting page scan - looking for: ${requiredFormats.join(", ")}`, { scale: this.config.initialScale });
+    // Log expectation info
+    if (expectation) {
+      if (expectation.totalCodeCount === 0) {
+        log("info", "Starting page scan - expecting no codes", { scale: this.config.initialScale });
+      } else {
+        const expectedFormats = expectation.formats.map((f) => `${f.code}(${f.count})`).join(", ");
+        log("info", `Starting page scan - expecting ${expectation.totalCodeCount} code(s): ${expectedFormats}`, { scale: this.config.initialScale });
+      }
     } else {
-      log("info", "Starting page scan", { scale: this.config.initialScale });
+      log("info", "Starting page scan - no structure defined", { scale: this.config.initialScale });
+    }
+
+    // Early exit if page expects no codes
+    if (expectation && expectation.totalCodeCount === 0) {
+      log("success", "Page expects no codes - skipping scan", { scale: this.config.initialScale });
+      return {
+        success: true,
+        result: { success: true, codes: [], error: null },
+        scale: this.config.initialScale,
+        rotated: false,
+        attempts: 0,
+        skipped: true,
+      };
     }
 
     for (const scale of scaleSequence) {
@@ -193,7 +249,6 @@ export class PDFManager {
         }
 
         if (result.success) {
-          const formatCheck = this.checkRequiredFormats(result.codes, requiredFormats);
           const formatsFound = result.codes.map((c) => c.format).join(", ");
 
           // Track best result (most codes found)
@@ -203,8 +258,11 @@ export class PDFManager {
             bestRotated = rotated;
           }
 
-          if (formatCheck.allFound || requiredFormats.length === 0) {
-            // All required formats found (or no requirements)
+          // Check against expectation
+          const check = this.checkPageExpectation(result.codes, expectation);
+
+          if (check.met) {
+            // Expectation met - early exit
             log("success", `Found ${result.codes.length} code(s): ${formatsFound}`, { scale, rotated });
             return {
               success: true,
@@ -214,8 +272,8 @@ export class PDFManager {
               attempts: attemptedScales.size,
             };
           } else {
-            // Some codes found but not all required formats
-            log("warning", `Found ${result.codes.length} code(s) [${formatsFound}], missing: ${formatCheck.missingFormats.join(", ")}`, { scale, rotated });
+            // Some codes found but expectation not met
+            log("warning", `Found ${check.foundCount}/${check.expectedCount} code(s) [${formatsFound}], missing: ${check.missingFormats.join(", ")}`, { scale, rotated });
           }
         } else {
           log("warning", "No codes found at this scale", { scale });
@@ -229,7 +287,7 @@ export class PDFManager {
 
     // All scales exhausted
     if (bestResult) {
-      // Return best result even if not all formats found
+      // Return best result even if expectation not fully met
       const formatsFound = bestResult.codes.map((c) => c.format).join(", ");
       log("warning", `Exhausted all scales. Best result: ${bestResult.codes.length} code(s) [${formatsFound}]`, {
         scale: bestScale,
@@ -242,7 +300,7 @@ export class PDFManager {
         scale: bestScale,
         rotated: bestRotated,
         attempts: attemptedScales.size,
-        partial: true, // Indicates not all required formats were found
+        partial: true, // Indicates expectation not fully met
       };
     }
 
@@ -270,7 +328,13 @@ export class PDFManager {
    */
   async processFile(pdfFile, onPageComplete = null, onLog = null) {
     const fileName = pdfFile.name;
-    this.allPdfFiles[fileName] = {};
+    const structureId = this.config.structure?.structureID || null;
+
+    // Initialize file entry with structureId
+    this.allPdfFiles[fileName] = {
+      structureId,
+      pages: {},
+    };
 
     const log = (type, message, extra = {}) => {
       if (onLog) {
@@ -284,7 +348,7 @@ export class PDFManager {
     };
 
     try {
-      log("start", "Loading PDF document");
+      log("start", `Loading PDF document${structureId ? ` (Structure ID: ${structureId})` : ""}`);
       const pdf = await this.pdfToImage.loadDocument(pdfFile);
       const totalPages = pdf.numPages;
       log("info", `PDF loaded with ${totalPages} page(s)`);
@@ -293,12 +357,14 @@ export class PDFManager {
         const page = await pdf.getPage(pageNum);
         const pageResult = await this.processPage(page, pageNum, fileName, onLog);
 
-        // Store result
-        this.allPdfFiles[fileName][pageNum] = {
+        // Store result in pages object
+        this.allPdfFiles[fileName].pages[pageNum] = {
           result: pageResult.result,
           scale: pageResult.scale,
           rotated: pageResult.rotated,
           success: pageResult.success,
+          skipped: pageResult.skipped || false,
+          partial: pageResult.partial || false,
         };
 
         // Progress callback
@@ -315,16 +381,18 @@ export class PDFManager {
       log("complete", `Processing complete. ${totalPages} page(s) processed.`);
       return {
         fileName,
+        structureId,
         totalPages,
-        results: this.allPdfFiles[fileName],
+        results: this.allPdfFiles[fileName].pages,
         success: true,
       };
     } catch (err) {
       log("error", `Failed to process: ${err.message}`);
       return {
         fileName,
+        structureId,
         totalPages: 0,
-        results: this.allPdfFiles[fileName],
+        results: this.allPdfFiles[fileName].pages,
         success: false,
         error: err.message,
       };
@@ -365,14 +433,19 @@ export class PDFManager {
   getResultsForUI() {
     const uiResults = [];
 
-    for (const [fileName, pages] of Object.entries(this.allPdfFiles)) {
+    for (const [fileName, fileData] of Object.entries(this.allPdfFiles)) {
+      const pages = fileData.pages || fileData; // Support both old and new format
       const fileResult = {
         name: fileName,
+        structureId: fileData.structureId || null,
         results: [],
       };
 
       for (const [pageNum, pageData] of Object.entries(pages)) {
-        const qrs = pageData.result.success
+        // Skip if this is the structureId field (for backward compat)
+        if (pageNum === "structureId" || pageNum === "pages") continue;
+
+        const qrs = pageData.result?.success
           ? pageData.result.codes.map((code) => ({
               success: true,
               data: code.data,
@@ -386,7 +459,7 @@ export class PDFManager {
                 data: null,
                 format: null,
                 ct: 0,
-                error: pageData.result.error,
+                error: pageData.result?.error || "UNKNOWN_ERROR",
               },
             ];
 
@@ -395,6 +468,8 @@ export class PDFManager {
           qrs,
           scale: pageData.scale,
           rotated: pageData.rotated,
+          skipped: pageData.skipped || false,
+          partial: pageData.partial || false,
         });
       }
 
@@ -422,15 +497,23 @@ export class PDFManager {
     let totalPages = 0;
     let successfulPages = 0;
     let failedPages = 0;
+    let skippedPages = 0;
+    let partialPages = 0;
     let totalCodes = 0;
 
-    for (const pages of Object.values(this.allPdfFiles)) {
+    for (const fileData of Object.values(this.allPdfFiles)) {
       totalFiles++;
-      for (const pageData of Object.values(pages)) {
+      const pages = fileData.pages || fileData;
+      for (const [key, pageData] of Object.entries(pages)) {
+        if (key === "structureId" || key === "pages") continue;
         totalPages++;
-        if (pageData.success) {
+        if (pageData.skipped) {
+          skippedPages++;
           successfulPages++;
-          totalCodes += pageData.result.codes.length;
+        } else if (pageData.success) {
+          successfulPages++;
+          if (pageData.partial) partialPages++;
+          totalCodes += pageData.result?.codes?.length || 0;
         } else {
           failedPages++;
         }
@@ -442,6 +525,8 @@ export class PDFManager {
       totalPages,
       successfulPages,
       failedPages,
+      skippedPages,
+      partialPages,
       totalCodes,
       successRate: totalPages > 0 ? (successfulPages / totalPages) * 100 : 0,
     };
