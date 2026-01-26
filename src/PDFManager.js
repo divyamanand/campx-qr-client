@@ -1,6 +1,7 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min?url";
 import { ScanImage } from "./ScanImage";
+import { ScanStrategy } from "./ScanStrategy";
 import { rotateImage } from "./imageUtils";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -41,6 +42,12 @@ export class PDFManager {
     this.scanner = new ScanImage();
     this.imageType = config.imageType ?? "image/png";
     this.imageQuality = config.imageQuality ?? 1;
+
+    // Initialize scan strategy with logging
+    this.scanStrategy = new ScanStrategy(this.scanner, {
+      onLog: config.onStrategyLog || null,
+      detectionScale: config.detectionScale || 1.5,
+    });
 
     // Results storage: { fileName: { structureId, pages: { pageNumber: { result, scale, rotated } } } }
     this.allPdfFiles = {};
@@ -206,8 +213,8 @@ export class PDFManager {
   }
 
   /**
-   * Process a single page with retry logic based on structure expectations
-   * Retries until expected codes are found or scale boundaries exhausted
+   * Process a single page using optimized ROI-based strategy
+   * Delegates to ScanStrategy for intelligent detection and retry logic
    * @param {PDFPageProxy} page - PDF page to process
    * @param {number} pageNumber - Page number
    * @param {string} fileName - File name for tracking
@@ -215,16 +222,9 @@ export class PDFManager {
    * @returns {Promise<PageResult>}
    */
   async processPage(page, pageNumber, fileName, onLog = null) {
-    const scaleSequence = this.generateScaleSequence();
-    const attemptedScales = new Set();
-
     // Get page expectation from structure
     const expectation = this.getPageExpectation(pageNumber);
-
-    // Track best result so far
-    let bestResult = null;
-    let bestScale = null;
-    let bestRotated = false;
+    const requiredFormats = expectation?.formats?.map((f) => f.code) || [];
 
     const log = (type, message, extra = {}) => {
       if (onLog) {
@@ -233,27 +233,14 @@ export class PDFManager {
           message,
           fileName,
           pageNumber,
-          attemptCount: attemptedScales.size,
           ...extra,
         });
       }
     };
 
-    // Log expectation info
-    if (expectation) {
-      if (expectation.totalCodeCount === 0) {
-        log("info", "Starting page scan - expecting no codes", { scale: this.config.initialScale });
-      } else {
-        const expectedFormats = expectation.formats.map((f) => `${f.code}(${f.count})`).join(", ");
-        log("info", `Starting page scan - expecting ${expectation.totalCodeCount} code(s): ${expectedFormats}`, { scale: this.config.initialScale });
-      }
-    } else {
-      log("info", "Starting page scan - no structure defined", { scale: this.config.initialScale });
-    }
-
-    // Early exit if page expects no codes
-    if (expectation && expectation.totalCodeCount === 0) {
-      log("success", "Page expects no codes - skipping scan", { scale: this.config.initialScale });
+    // Log expectation
+    if (expectation?.totalCodeCount === 0) {
+      log("info", `Page ${pageNumber} expects no codes - skipping`);
       return {
         success: true,
         result: { success: true, codes: [], error: null },
@@ -264,102 +251,60 @@ export class PDFManager {
       };
     }
 
-    for (const scale of scaleSequence) {
-      // Skip if already attempted this scale
-      if (attemptedScales.has(scale)) continue;
-      attemptedScales.add(scale);
+    // Render page to initial scale
+    log("info", `Rendering page ${pageNumber} at initial scale`);
+    const imageBlob = await this.renderPageToBlob(page, this.config.initialScale);
 
-      if (attemptedScales.size > 1) {
-        log("retry", `Retrying with scale change`, { scale, attemptCount: attemptedScales.size });
-      }
+    // Get image dimensions for ROI computation
+    const imageMeta = {
+      width: (await this.getBlobDimensions(imageBlob)).width,
+      height: (await this.getBlobDimensions(imageBlob)).height,
+      scale: this.config.initialScale,
+    };
 
-      try {
-        // Render page to image blob at current scale
-        log("info", "Rendering page at scale", { scale });
-        const imageBlob = await this.renderPageToBlob(page, scale);
+    // Use ScanStrategy for optimized processing
+    const strategyResult = await this.scanStrategy.processPage(
+      imageBlob,
+      pageNumber,
+      requiredFormats,
+      imageMeta
+    );
 
-        // First try: scan original
-        log("info", "Scanning image", { scale });
-        let result = await this.scanner.scan(imageBlob);
-        let rotated = false;
-
-        // If no success on original, try rotated
-        if (!result.success && this.config.enableRotation) {
-          log("retry", "Trying with rotated image", { scale, rotated: true });
-          const rotatedBlob = await rotateImage(imageBlob, this.config.rotationDegrees);
-          result = await this.scanner.scan(rotatedBlob);
-          rotated = true;
-        }
-
-        if (result.success) {
-          const formatsFound = result.codes.map((c) => c.format).join(", ");
-
-          // Track best result (most codes found)
-          if (!bestResult || result.codes.length > bestResult.codes.length) {
-            bestResult = result;
-            bestScale = scale;
-            bestRotated = rotated;
-          }
-
-          // Check against expectation
-          const check = this.checkPageExpectation(result.codes, expectation);
-
-          if (check.met) {
-            // Expectation met - early exit
-            log("success", `Found ${result.codes.length} code(s): ${formatsFound}`, { scale, rotated });
-            return {
-              success: true,
-              result,
-              scale,
-              rotated,
-              attempts: attemptedScales.size,
-            };
-          } else {
-            // Some codes found but expectation not met
-            log("warning", `Found ${check.foundCount}/${check.expectedCount} code(s) [${formatsFound}], missing: ${check.missingFormats.join(", ")}`, { scale, rotated });
-          }
-        } else {
-          log("warning", "No codes found at this scale", { scale });
-        }
-      } catch (err) {
-        log("error", `Error: ${err.message}`, { scale });
-        console.warn(`Error processing page ${pageNumber} at scale ${scale}:`, err);
-        // Continue to next scale on error
-      }
-    }
-
-    // All scales exhausted
-    if (bestResult) {
-      // Return best result even if expectation not fully met
-      const formatsFound = bestResult.codes.map((c) => c.format).join(", ");
-      log("warning", `Exhausted all scales. Best result: ${bestResult.codes.length} code(s) [${formatsFound}]`, {
-        scale: bestScale,
-        rotated: bestRotated,
-        attemptCount: attemptedScales.size
-      });
-      return {
-        success: true,
-        result: bestResult,
-        scale: bestScale,
-        rotated: bestRotated,
-        attempts: attemptedScales.size,
-        partial: true, // Indicates expectation not fully met
-      };
-    }
-
-    // All attempts failed - no codes found at all
-    log("error", "All retry attempts failed - no codes found", { attemptCount: attemptedScales.size });
+    // Transform strategy result to PDFManager format
     return {
-      success: false,
+      success: strategyResult.success,
       result: {
-        success: false,
-        codes: [],
-        error: "ALL_RETRY_ATTEMPTS_FAILED",
+        success: strategyResult.success,
+        codes: strategyResult.codes || [],
+        error: strategyResult.error,
       },
       scale: this.config.initialScale,
       rotated: false,
-      attempts: attemptedScales.size,
+      attempts: strategyResult.totalAttempts || 0,
+      partial: !strategyResult.isComplete && strategyResult.success,
     };
+  }
+
+  /**
+   * Get blob dimensions (width, height)
+   */
+  async getBlobDimensions(blob) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.width, height: img.height });
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: 0, height: 0 });
+      };
+
+      img.src = url;
+    });
   }
 
   /**
@@ -396,29 +341,88 @@ export class PDFManager {
       const totalPages = pdf.numPages;
       log("info", `PDF loaded with ${totalPages} page(s)`);
 
-      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const pageResult = await this.processPage(page, pageNum, fileName, onLog);
+      // Process pages in parallel batches of 5
+      const BATCH_SIZE = 5;
+      const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
 
-        // Store result in pages object
-        this.allPdfFiles[fileName].pages[pageNum] = {
-          result: pageResult.result,
-          scale: pageResult.scale,
-          rotated: pageResult.rotated,
-          success: pageResult.success,
-          skipped: pageResult.skipped || false,
-          partial: pageResult.partial || false,
-        };
+      for (let batchStart = 0; batchStart < pageNumbers.length; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, pageNumbers.length);
+        const batchPageNumbers = pageNumbers.slice(batchStart, batchEnd);
 
-        // Progress callback
-        if (onPageComplete) {
-          onPageComplete({
-            fileName,
-            pageNumber: pageNum,
-            totalPages,
-            pageResult,
-          });
-        }
+        log("info", `Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: pages ${batchPageNumbers[0]}-${batchPageNumbers[batchPageNumbers.length - 1]}`);
+
+        // Process all pages in batch in parallel
+        const batchPromises = batchPageNumbers.map(async (pageNum) => {
+          try {
+            const page = await pdf.getPage(pageNum);
+            const pageResult = await this.processPage(page, pageNum, fileName, onLog);
+
+            // Store result in pages object
+            this.allPdfFiles[fileName].pages[pageNum] = {
+              result: pageResult.result,
+              scale: pageResult.scale,
+              rotated: pageResult.rotated,
+              success: pageResult.success,
+              skipped: pageResult.skipped || false,
+              partial: pageResult.partial || false,
+            };
+
+            // Progress callback
+            if (onPageComplete) {
+              onPageComplete({
+                fileName,
+                pageNumber: pageNum,
+                totalPages,
+                pageResult,
+              });
+            }
+
+            return {
+              pageNum,
+              success: true,
+              pageResult,
+            };
+          } catch (err) {
+            log("error", `Failed to process page ${pageNum}: ${err.message}`);
+
+            // Store error result
+            this.allPdfFiles[fileName].pages[pageNum] = {
+              result: {
+                success: false,
+                codes: [],
+                error: err.message,
+              },
+              scale: this.config.initialScale,
+              rotated: false,
+              success: false,
+              skipped: false,
+              partial: false,
+            };
+
+            if (onPageComplete) {
+              onPageComplete({
+                fileName,
+                pageNumber: pageNum,
+                totalPages,
+                pageResult: {
+                  success: false,
+                  error: err.message,
+                },
+              });
+            }
+
+            return {
+              pageNum,
+              success: false,
+              error: err.message,
+            };
+          }
+        });
+
+        // Wait for entire batch to complete before moving to next batch
+        const batchResults = await Promise.all(batchPromises);
+        const successCount = batchResults.filter((r) => r.success).length;
+        log("info", `Batch complete: ${successCount}/${batchResults.length} pages succeeded`);
       }
 
       log("complete", `Processing complete. ${totalPages} page(s) processed.`);
