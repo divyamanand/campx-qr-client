@@ -1,6 +1,9 @@
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min?url";
 import { ScanImage } from "./ScanImage";
-import { PDFToImage } from "./PDFToImage";
 import { rotateImage } from "./imageUtils";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 /**
  * Default configuration for PDFManager
@@ -18,9 +21,9 @@ const DEFAULT_CONFIG = {
  * PDFManager - Orchestrates PDF processing with intelligent retry logic
  *
  * Responsibilities:
- * - Process PDF files page by page
- * - Coordinate between PDFToImage and ScanImage
- * - Implement retry logic with scale adjustments
+ * - Load and render PDF pages at various scales
+ * - Scan images for barcodes using ScanImage
+ * - Implement retry logic with scale adjustments and rotation
  * - Track results in structured data
  */
 export class PDFManager {
@@ -36,7 +39,8 @@ export class PDFManager {
   constructor(config = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.scanner = new ScanImage();
-    this.pdfToImage = new PDFToImage();
+    this.imageType = config.imageType ?? "image/png";
+    this.imageQuality = config.imageQuality ?? 1;
 
     // Results storage: { fileName: { structureId, pages: { pageNumber: { result, scale, rotated } } } }
     this.allPdfFiles = {};
@@ -97,6 +101,45 @@ export class PDFManager {
       expectedCount: expectation.totalCodeCount,
       missingFormats,
     };
+  }
+
+  /**
+   * Load a PDF document from a File
+   * @param {File} pdfFile - The PDF file to load
+   * @returns {Promise<PDFDocumentProxy>} - The loaded PDF document
+   */
+  async loadDocument(pdfFile) {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    return pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  }
+
+  /**
+   * Render a PDF page to an image blob at a given scale
+   * @param {PDFPageProxy} page - The PDF page to render
+   * @param {number} scale - The scale factor for rendering
+   * @returns {Promise<Blob>} - The rendered image blob
+   */
+  async renderPageToBlob(page, scale) {
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+      canvasContext: ctx,
+      viewport,
+    }).promise;
+
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, this.imageType, this.imageQuality)
+    );
+
+    // Cleanup canvas
+    canvas.width = canvas.height = 0;
+
+    return blob;
   }
 
   /**
@@ -231,19 +274,19 @@ export class PDFManager {
       }
 
       try {
-        // Convert page to image at current scale
-        log("info", "Converting page to image", { scale });
-        const imageResult = await this.pdfToImage.convertPageToImage(page, scale);
+        // Render page to image blob at current scale
+        log("info", "Rendering page at scale", { scale });
+        const imageBlob = await this.renderPageToBlob(page, scale);
 
         // First try: scan original
         log("info", "Scanning image", { scale });
-        let result = await this.scanner.scan(imageResult.blob);
+        let result = await this.scanner.scan(imageBlob);
         let rotated = false;
 
         // If no success on original, try rotated
         if (!result.success && this.config.enableRotation) {
           log("retry", "Trying with rotated image", { scale, rotated: true });
-          const rotatedBlob = await rotateImage(imageResult.blob, this.config.rotationDegrees);
+          const rotatedBlob = await rotateImage(imageBlob, this.config.rotationDegrees);
           result = await this.scanner.scan(rotatedBlob);
           rotated = true;
         }
@@ -349,7 +392,7 @@ export class PDFManager {
 
     try {
       log("start", `Loading PDF document${structureId ? ` (Structure ID: ${structureId})` : ""}`);
-      const pdf = await this.pdfToImage.loadDocument(pdfFile);
+      const pdf = await this.loadDocument(pdfFile);
       const totalPages = pdf.numPages;
       log("info", `PDF loaded with ${totalPages} page(s)`);
 
@@ -400,20 +443,26 @@ export class PDFManager {
   }
 
   /**
-   * Process multiple PDF files
+   * Process multiple PDF files in parallel
    * @param {File[]} pdfFiles - Array of PDF files to process
    * @param {Function} onFileComplete - Optional callback when a file completes
    * @param {Function} onPageComplete - Optional callback for page progress
    * @returns {Promise<Object>} - All results
    */
   async processFiles(pdfFiles, onFileComplete = null, onPageComplete = null) {
-    for (const pdfFile of pdfFiles) {
+    // Process all files in parallel using Promise.all
+    const processingPromises = pdfFiles.map(async (pdfFile) => {
       const fileResult = await this.processFile(pdfFile, onPageComplete);
 
       if (onFileComplete) {
         onFileComplete(fileResult);
       }
-    }
+
+      return fileResult;
+    });
+
+    // Wait for all files to complete
+    await Promise.all(processingPromises);
 
     return this.getTheScanResults();
   }

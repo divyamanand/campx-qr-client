@@ -3,6 +3,8 @@ import "./App.css";
 import { PDFManager } from "./PDFManager";
 import { Logger, createLogEntry } from "./Logger";
 import { structures } from "./structures";
+import { ErrorHandler } from "./ErrorHandler";
+import { ErrorDisplay } from "./ErrorDisplay";
 
 function App() {
   const [filesQueue, setFilesQueue] = useState([]);
@@ -11,6 +13,7 @@ function App() {
   const [processingStartTime, setProcessingStartTime] = useState(null);
   const [totalElapsedTime, setTotalElapsedTime] = useState(0);
   const [liveElapsed, setLiveElapsed] = useState(0);
+  const [fileErrors, setFileErrors] = useState({}); // Track errors by file ID
 
   // Live timer during processing
   useEffect(() => {
@@ -62,11 +65,16 @@ function App() {
     const startTime = Date.now();
     setProcessingStartTime(startTime);
 
-    for (const currentItem of currentQueue) {
-      if (currentItem.status !== "pending") continue;
+    // Collect all pending items
+    const pendingItems = currentQueue.filter((item) => item.status === "pending");
 
-      updateItemStatus(currentItem.id, "processing");
+    // Mark all as processing
+    pendingItems.forEach((item) => {
+      updateItemStatus(item.id, "processing");
+    });
 
+    // Create processing promises for all files in parallel
+    const processingPromises = pendingItems.map(async (currentItem) => {
       try {
         // Create a new PDFManager for each file with config and structure
         // TODO: Allow user to select structure or auto-detect
@@ -96,16 +104,34 @@ function App() {
         const uiResults = manager.getResultsForUI();
         const fileResults = uiResults[0]?.results || [];
 
+        // Validate results using ErrorHandler
+        const errorHandler = new ErrorHandler(structures[0]);
+        const scanResults = manager.getTheScanResults();
+        const validationErrors = errorHandler.validate(scanResults, currentItem.name);
+
+        // Store errors for this file
+        setFileErrors((prev) => ({
+          ...prev,
+          [currentItem.id]: {
+            errors: validationErrors,
+            summary: errorHandler.getSummary(),
+          },
+        }));
+
         updateItemStatus(currentItem.id, "completed", {
           results: fileResults,
           progress: { current: fileResults.length, total: fileResults.length },
+          validationErrors,
         });
       } catch (err) {
         console.error(err);
         addLog({ type: "error", message: err.message, fileName: currentItem.name });
         updateItemStatus(currentItem.id, "error", { error: err.message });
       }
-    }
+    });
+
+    // Wait for all files to complete processing
+    await Promise.all(processingPromises);
 
     const endTime = Date.now();
     setTotalElapsedTime((prev) => prev + (endTime - startTime));
@@ -184,7 +210,8 @@ function App() {
 
 function FileCard({ data }) {
   const [expanded, setExpanded] = useState(false);
-  const { name, status, results, progress, error } = data;
+  const [showErrors, setShowErrors] = useState(false);
+  const { name, status, results, progress, error, validationErrors } = data;
 
   const stats = useMemo(() => {
     if (!results || results.length === 0) return { pages: 0, codes: 0, hasPartial: false };
@@ -259,8 +286,26 @@ function FileCard({ data }) {
           {hasData && (
             <span className={`chevron ${expanded ? "rotate" : ""}`}>▼</span>
           )}
+
+          {validationErrors && validationErrors.length > 0 && (
+            <button
+              className="error-toggle-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowErrors(!showErrors);
+              }}
+            >
+              {validationErrors.length} Issue{validationErrors.length !== 1 ? "s" : ""}
+            </button>
+          )}
         </div>
       </div>
+
+      {validationErrors && validationErrors.length > 0 && showErrors && (
+        <div className="card-errors">
+          <ErrorDisplay errors={validationErrors} fileName={name} structure={structures[0]} />
+        </div>
+      )}
 
       {expanded && hasData && (
         <div className="card-body">

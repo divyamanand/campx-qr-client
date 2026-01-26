@@ -1,6 +1,11 @@
 export const structures = [
     {
-        structureID: 1, 
+        structureID: 1,
+        studentRoll: "2021BCS001",
+        studentName: "Arjun Singh",
+        courseCode: "CS-301",
+        courseName: "Data Structures & Algorithms",
+        expectedPageCount: 32,
         format: [
         {
             pageNumber: 1,

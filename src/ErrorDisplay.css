@@ -1,0 +1,386 @@
+/* Error Display Component Styles */
+
+.error-display {
+  background: white;
+  border-left: 4px solid;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  font-family: inherit;
+}
+
+.error-display.critical {
+  border-left-color: #ff0000;
+  background: #fff5f5;
+}
+
+.error-display.warning {
+  border-left-color: #ffaa00;
+  background: #fffaf0;
+}
+
+/* Error Header */
+.error-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.error-title {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  gap: 8px;
+}
+
+.error-icon {
+  font-size: 20px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #666;
+}
+
+.file-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-info {
+  background: #f0f0f0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* Error List */
+.error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Error Item */
+.error-item {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.error-item.severity-critical {
+  border-color: #ffcccc;
+  background: #fffbfb;
+}
+
+.error-item.severity-warning {
+  border-color: #ffe6cc;
+  background: #fffef9;
+}
+
+.error-item.severity-info {
+  border-color: #cce5ff;
+  background: #f9fbff;
+}
+
+/* Error Item Header */
+.error-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.error-item-header:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.error-item-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: #333;
+}
+
+.error-type-icon {
+  font-size: 18px;
+}
+
+.error-type-label {
+  font-size: 14px;
+}
+
+.expand-icon {
+  display: inline-block;
+  font-size: 12px;
+  color: #999;
+  transition: transform 0.3s;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+/* Error Item Details */
+.error-item-details {
+  padding: 0 16px 16px 16px;
+  border-top: 1px solid;
+}
+
+.error-item.severity-critical .error-item-details {
+  border-top-color: #ffcccc;
+}
+
+.error-item.severity-warning .error-item-details {
+  border-top-color: #ffe6cc;
+}
+
+.error-item.severity-info .error-item-details {
+  border-top-color: #cce5ff;
+}
+
+.error-message {
+  margin: 12px 0;
+  font-size: 14px;
+  color: #555;
+  line-height: 1.5;
+}
+
+/* Error Metadata */
+.error-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+}
+
+.meta-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.meta-label {
+  font-weight: 600;
+  color: #666;
+}
+
+.meta-value {
+  color: #333;
+  background: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+}
+
+/* Error Details Section */
+.error-details-section {
+  margin: 12px 0;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.error-details-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Details Table */
+.details-table {
+  width: 100%;
+  font-size: 13px;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+
+.details-table td {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.details-table td:first-child {
+  font-weight: 600;
+  color: #666;
+  width: 120px;
+}
+
+.details-table .value {
+  color: #333;
+  font-family: "Courier New", monospace;
+  padding: 4px 8px;
+  background: #f9f9f9;
+  border-radius: 3px;
+}
+
+.details-table .error-text {
+  color: #d32f2f;
+  background: #ffebee;
+}
+
+.details-table .warning-text {
+  color: #f57c00;
+  background: #fff3e0;
+}
+
+/* Error Recommendation */
+.error-recommendation {
+  margin: 10px 0 0 0;
+  padding: 10px;
+  background: #f5f5f5;
+  border-left: 3px solid #ffaa00;
+  border-radius: 3px;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+/* Error Footer */
+.error-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+
+.dismiss-btn {
+  padding: 8px 16px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.dismiss-btn:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+/* Error Summary */
+.error-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  margin: 12px 0;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.summary-item.critical {
+  color: #d32f2f;
+  background: #ffebee;
+}
+
+.summary-item.critical:hover {
+  background: #ffcdd2;
+}
+
+.summary-item.warning {
+  color: #f57c00;
+  background: #fff3e0;
+}
+
+.summary-item.warning:hover {
+  background: #ffe0b2;
+}
+
+.summary-item.info {
+  color: #1976d2;
+  background: #e3f2fd;
+}
+
+.summary-item.info:hover {
+  background: #bbdefb;
+}
+
+.summary-item .icon {
+  font-size: 16px;
+}
+
+.summary-item .count {
+  min-width: 20px;
+  text-align: center;
+}
+
+.summary-total {
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid #ddd;
+  font-size: 12px;
+  color: #999;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .error-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .file-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .error-metadata {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .error-summary {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .summary-total {
+    margin-left: 0;
+    border-left: none;
+    padding-left: 0;
+    width: 100%;
+  }
+}
