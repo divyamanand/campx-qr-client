@@ -32,16 +32,12 @@ export interface ScanImageOptions {
  * then use OpenCV's QRCodeDetector to find and decode QR codes.
  */
 export class ScanImage {
-  private options: {
-    interpolation: number;
-  };
+  private options: ScanImageOptions;
   private initialized: boolean;
+  private interpolation: number | null = null;
 
   constructor(options: ScanImageOptions = {}) {
-    this.options = {
-      // Interpolation method for scaling: cv.INTER_LINEAR (default), cv.INTER_AREA, cv.INTER_CUBIC
-      interpolation: options.interpolation ?? cv.INTER_LINEAR,
-    };
+    this.options = options;
     this.initialized = false;
   }
 
@@ -50,8 +46,21 @@ export class ScanImage {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    // OpenCV.js is already loaded via import
+    // Lazy load interpolation value once OpenCV is ready
+    if (this.interpolation === null) {
+      this.interpolation = this.options.interpolation ?? cv.INTER_LINEAR;
+    }
     this.initialized = true;
+  }
+
+  /**
+   * Get interpolation constant, initializing if needed
+   */
+  private getInterpolation(): number {
+    if (this.interpolation === null) {
+      this.interpolation = this.options.interpolation ?? cv.INTER_LINEAR;
+    }
+    return this.interpolation;
   }
 
   /**
@@ -79,7 +88,7 @@ export class ScanImage {
         const newSize = new cv.Size(newWidth, newHeight);
 
         processedMat = new cv.Mat();
-        cv.resize(srcMat, processedMat, newSize, 0, 0, this.options.interpolation);
+        cv.resize(srcMat, processedMat, newSize, 0, 0, this.getInterpolation());
         srcMat.delete();
       } else {
         processedMat = srcMat;
