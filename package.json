@@ -1,12 +1,18 @@
 {
-  "name": "campx-react-app",
-  "private": true,
+  "name": "campx-qr-scanner",
   "version": "0.0.1",
+  "description": "Batch PDF QR/Barcode Scanner with disk-based logging",
+  "main": "main/electron-main.js",
   "type": "module",
+  "author": "",
+  "license": "MIT",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.88",
@@ -22,7 +28,29 @@
     "zxing-wasm": "^2.2.4"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.0",
-    "vite": "^5.0.0"
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.campx.qrscanner",
+    "productName": "CampX QR Scanner",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

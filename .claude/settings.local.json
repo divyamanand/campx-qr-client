@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(ls -la \"E:\\\\Dev\\\\campx\\\\campx-qr-client\"\" && echo \"--- MAIN DIR ---\" && ls -la \"E:Devcampxcampx-qr-clientmain\" && echo \"--- RENDERER DIR ---\" && ls -la \"E:Devcampxcampx-qr-clientrenderer \")",
+      "Bash(yarn install)",
+      "Bash(npm install:*)",
+      "Bash(powershell:*)"
+    ]
+  }
+}

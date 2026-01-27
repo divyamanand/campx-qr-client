@@ -621,3 +621,174 @@ body {
   margin: 1rem 0 0 0;
   padding: 0;
 }
+
+/* --- NEW BATCH PROCESSING UI --- */
+.batch-processing-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.batch-processing-panel h2 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.25rem;
+  color: var(--text-main);
+}
+
+.directory-help {
+  font-size: 0.8rem;
+  color: var(--text-sub);
+  margin: 0.5rem 0 0 0;
+  padding: 0;
+}
+
+.browse-btn {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.browse-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+}
+
+.browse-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.batch-start-btn {
+  width: 100%;
+  padding: 1rem;
+  background: var(--success);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.2s;
+  margin-top: 1rem;
+}
+
+.batch-start-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
+}
+
+.batch-start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--text-sub);
+}
+
+.processing-info {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f1f5f9;
+  border-left: 4px solid var(--primary);
+  border-radius: 4px;
+}
+
+.current-file {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.current-file .label {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.current-file .value {
+  color: var(--text-sub);
+  word-break: break-all;
+  flex: 1;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.stats-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.stats-card-header {
+  background: #f1f5f9;
+  padding: 1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border);
+}
+
+.stats-card-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.stat-row .label {
+  font-size: 0.85rem;
+  color: var(--text-sub);
+  font-weight: 500;
+}
+
+.stat-row .value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.stat-row .value.small {
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: var(--text-sub);
+  text-align: right;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-row .value.success {
+  color: var(--success);
+}
+
+.stat-row .value.error {
+  color: var(--error);
+}
