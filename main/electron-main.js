@@ -12,6 +12,172 @@ let mainWindow;
 const isDev = process.argv.includes("--dev");
 
 /**
+ * Register IPC handlers (called after app is ready)
+ */
+function registerIPCHandlers() {
+  // ============================================================================
+  // IPC HANDLERS - File System Operations
+  // ============================================================================
+
+  /**
+   * Read file from disk
+   */
+  ipcMain.handle("fs:readFile", async (event, filePath) => {
+    try {
+      const buffer = await fs.readFile(filePath);
+      return buffer;
+    } catch (err) {
+      console.error("Failed to read file:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Write file to disk
+   */
+  ipcMain.handle("fs:writeFile", async (event, filePath, content) => {
+    try {
+      await fs.writeFile(filePath, content);
+      return true;
+    } catch (err) {
+      console.error("Failed to write file:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Append to file on disk
+   */
+  ipcMain.handle("fs:appendFile", async (event, filePath, content) => {
+    try {
+      await fs.appendFile(filePath, content);
+      return true;
+    } catch (err) {
+      console.error("Failed to append to file:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Read directory contents
+   */
+  ipcMain.handle("fs:readdir", async (event, dirPath) => {
+    try {
+      const files = await fs.readdir(dirPath);
+      return files;
+    } catch (err) {
+      console.error("Failed to read directory:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Create directory (recursively)
+   */
+  ipcMain.handle("fs:ensureDir", async (event, dirPath) => {
+    try {
+      await fs.mkdir(dirPath, { recursive: true });
+      return true;
+    } catch (err) {
+      console.error("Failed to create directory:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Move file to another location
+   */
+  ipcMain.handle("fs:moveFile", async (event, sourcePath, destPath) => {
+    try {
+      await fs.rename(sourcePath, destPath);
+      return true;
+    } catch (err) {
+      console.error("Failed to move file:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Check if path exists
+   */
+  ipcMain.handle("fs:exists", async (event, dirPath) => {
+    try {
+      await fs.access(dirPath);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  /**
+   * Delete file or directory
+   */
+  ipcMain.handle("fs:delete", async (event, filePath) => {
+    try {
+      await fs.rm(filePath, { recursive: true, force: true });
+      return true;
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      throw err;
+    }
+  });
+
+  // ============================================================================
+  // IPC HANDLERS - Dialog Operations
+  // ============================================================================
+
+  /**
+   * Show open dialog for directory selection
+   */
+  ipcMain.handle("dialog:selectDirectory", async (event) => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"],
+        title: "Select Primary Directory for Batch Processing",
+        message: "Choose a directory containing PDF files",
+      });
+
+      if (result.canceled) {
+        return null;
+      }
+
+      return result.filePaths[0];
+    } catch (err) {
+      console.error("Failed to select directory:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Show save dialog
+   */
+  ipcMain.handle("dialog:saveFile", async (event, defaultPath) => {
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        defaultPath,
+        filters: [{ name: "All Files", extensions: ["*"] }],
+      });
+
+      if (result.canceled) {
+        return null;
+      }
+
+      return result.filePath;
+    } catch (err) {
+      console.error("Failed to save file:", err);
+      throw err;
+    }
+  });
+
+  /**
+   * Show message dialog
+   */
+  ipcMain.handle("dialog:showMessage", async (event, options) => {
+    return dialog.showMessageBox(mainWindow, options);
+  });
+}
+
+/**
  * Create the main window
  */
 function createWindow() {
@@ -88,171 +254,13 @@ function createApplicationMenu() {
 }
 
 // ============================================================================
-// IPC HANDLERS - File System Operations
-// ============================================================================
-
-/**
- * Read file from disk
- */
-ipcMain.handle("fs:readFile", async (event, filePath) => {
-  try {
-    const buffer = await fs.readFile(filePath);
-    return buffer;
-  } catch (err) {
-    console.error("Failed to read file:", err);
-    throw err;
-  }
-});
-
-/**
- * Write file to disk
- */
-ipcMain.handle("fs:writeFile", async (event, filePath, content) => {
-  try {
-    await fs.writeFile(filePath, content);
-    return true;
-  } catch (err) {
-    console.error("Failed to write file:", err);
-    throw err;
-  }
-});
-
-/**
- * Append to file on disk
- */
-ipcMain.handle("fs:appendFile", async (event, filePath, content) => {
-  try {
-    await fs.appendFile(filePath, content);
-    return true;
-  } catch (err) {
-    console.error("Failed to append to file:", err);
-    throw err;
-  }
-});
-
-/**
- * Read directory contents
- */
-ipcMain.handle("fs:readdir", async (event, dirPath) => {
-  try {
-    const files = await fs.readdir(dirPath);
-    return files;
-  } catch (err) {
-    console.error("Failed to read directory:", err);
-    throw err;
-  }
-});
-
-/**
- * Create directory (recursively)
- */
-ipcMain.handle("fs:ensureDir", async (event, dirPath) => {
-  try {
-    await fs.mkdir(dirPath, { recursive: true });
-    return true;
-  } catch (err) {
-    console.error("Failed to create directory:", err);
-    throw err;
-  }
-});
-
-/**
- * Move file to another location
- */
-ipcMain.handle("fs:moveFile", async (event, sourcePath, destPath) => {
-  try {
-    await fs.rename(sourcePath, destPath);
-    return true;
-  } catch (err) {
-    console.error("Failed to move file:", err);
-    throw err;
-  }
-});
-
-/**
- * Check if path exists
- */
-ipcMain.handle("fs:exists", async (event, dirPath) => {
-  try {
-    await fs.access(dirPath);
-    return true;
-  } catch {
-    return false;
-  }
-});
-
-/**
- * Delete file or directory
- */
-ipcMain.handle("fs:delete", async (event, filePath) => {
-  try {
-    await fs.rm(filePath, { recursive: true, force: true });
-    return true;
-  } catch (err) {
-    console.error("Failed to delete:", err);
-    throw err;
-  }
-});
-
-// ============================================================================
-// IPC HANDLERS - Dialog Operations
-// ============================================================================
-
-/**
- * Show open dialog for directory selection
- */
-ipcMain.handle("dialog:selectDirectory", async (event) => {
-  try {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ["openDirectory"],
-      title: "Select Primary Directory for Batch Processing",
-      message: "Choose a directory containing PDF files",
-    });
-
-    if (result.canceled) {
-      return null;
-    }
-
-    return result.filePaths[0];
-  } catch (err) {
-    console.error("Failed to select directory:", err);
-    throw err;
-  }
-});
-
-/**
- * Show save dialog
- */
-ipcMain.handle("dialog:saveFile", async (event, defaultPath) => {
-  try {
-    const result = await dialog.showSaveDialog(mainWindow, {
-      defaultPath,
-      filters: [{ name: "All Files", extensions: ["*"] }],
-    });
-
-    if (result.canceled) {
-      return null;
-    }
-
-    return result.filePath;
-  } catch (err) {
-    console.error("Failed to save file:", err);
-    throw err;
-  }
-});
-
-/**
- * Show message dialog
- */
-ipcMain.handle("dialog:showMessage", async (event, options) => {
-  return dialog.showMessageBox(mainWindow, options);
-});
-
-// ============================================================================
 // App Event Handlers
 // ============================================================================
 
-app.on("ready", createWindow);
+app.on("ready", () => {
+  registerIPCHandlers();
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

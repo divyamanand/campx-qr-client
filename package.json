@@ -2,7 +2,7 @@
   "name": "campx-qr-scanner",
   "version": "0.0.1",
   "description": "Batch PDF QR/Barcode Scanner with disk-based logging",
-  "main": "main/electron-main.js",
+  "main": "main/electron-main-simple.js",
   "author": "",
   "license": "MIT",
   "scripts": {
