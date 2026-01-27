@@ -12,7 +12,6 @@ const DEFAULT_CONFIG = {
   enableRotation: true,
   rotationDegrees: 180,
   structure: null, // Structure definition for expected codes per page
-  parallelPageBatchSize: 1, // Number of pages to process in parallel (3-4 recommended)
 };
 
 /**
@@ -33,7 +32,6 @@ export class PDFManager {
    * @param {boolean} config.enableRotation - Whether to try rotation on failure (default: true)
    * @param {number} config.rotationDegrees - Degrees to rotate on retry (default: 180)
    * @param {Object} config.structure - Structure definition with expected codes per page
-   * @param {number} config.parallelPageBatchSize - Number of pages to process in parallel (default: 4)
    */
   constructor(config = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -357,52 +355,29 @@ export class PDFManager {
       const totalPages = pdf.numPages;
       // log("info", `PDF loaded with ${totalPages} page(s)`);
 
-      const pageBatchSize = this.config.parallelPageBatchSize;
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const pageResult = await this.processPage(page, pageNum, fileName, onLog);
 
-      // Process pages in parallel batches
-      for (let pageNum = 1; pageNum <= totalPages; pageNum += pageBatchSize) {
-        // Create batch of pages (3-4 pages per batch)
-        const batchEnd = Math.min(pageNum + pageBatchSize - 1, totalPages);
-        const pageBatch = [];
+        // Store result in pages object
+        this.pdfFile.pages[pageNum] = {
+          result: pageResult.result,
+          scale: pageResult.scale,
+          rotated: pageResult.rotated,
+          success: pageResult.success,
+          skipped: pageResult.skipped || false,
+          partial: pageResult.partial || false,
+        };
 
-        // Load all pages in batch
-        for (let i = pageNum; i <= batchEnd; i++) {
-          pageBatch.push(pdf.getPage(i));
+        // Progress callback
+        if (onPageComplete) {
+          onPageComplete({
+            fileName,
+            pageNumber: pageNum,
+            totalPages,
+            pageResult,
+          });
         }
-
-        // Get all pages concurrently
-        const pages = await Promise.all(pageBatch);
-
-        // Process all pages in batch concurrently
-        const pagePromises = pages.map((page, index) => {
-          const currentPageNum = pageNum + index;
-          return this.processPage(page, currentPageNum, fileName, onLog);
-        });
-
-        const pageResults = await Promise.all(pagePromises);
-
-        // Store results in order
-        pageResults.forEach((pageResult, index) => {
-          const currentPageNum = pageNum + index;
-          this.pdfFile.pages[currentPageNum] = {
-            result: pageResult.result,
-            scale: pageResult.scale,
-            rotated: pageResult.rotated,
-            success: pageResult.success,
-            skipped: pageResult.skipped || false,
-            partial: pageResult.partial || false,
-          };
-
-          // Progress callback
-          if (onPageComplete) {
-            onPageComplete({
-              fileName,
-              pageNumber: currentPageNum,
-              totalPages,
-              pageResult,
-            });
-          }
-        });
       }
 
       // log("complete", `Processing complete. ${totalPages} page(s) processed.`);
