@@ -324,17 +324,21 @@ export class PDFManager {
    * @param {File} pdfFile - The PDF file to process
    * @param {Function} onPageComplete - Optional callback for progress updates
    * @param {Function} onLog - Optional callback for logging events
+   * @param {boolean} storeInMemory - Store results in memory (default: true)
    * @returns {Promise<FileResult>}
    */
-  async processFile(pdfFile, onPageComplete = null, onLog = null) {
+  async processFile(pdfFile, onPageComplete = null, onLog = null, storeInMemory = true) {
     const fileName = pdfFile.name;
     const structureId = this.config.structure?.structureID || null;
 
-    // Initialize file entry with structureId
-    this.allPdfFiles[fileName] = {
-      structureId,
-      pages: {},
-    };
+    // Initialize file entry with structureId only if storing in memory
+    let fileResults = {};
+    if (storeInMemory) {
+      this.allPdfFiles[fileName] = {
+        structureId,
+        pages: {},
+      };
+    }
 
     const log = (type, message, extra = {}) => {
       if (onLog) {
@@ -353,12 +357,32 @@ export class PDFManager {
       const totalPages = pdf.numPages;
       log("info", `PDF loaded with ${totalPages} page(s)`);
 
+      // Get all pages first
+      const pagePromises = [];
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const pageResult = await this.processPage(page, pageNum, fileName, onLog);
+        pagePromises.push(
+          pdf.getPage(pageNum).then((page) => ({
+            pageNum,
+            page,
+          }))
+        );
+      }
 
-        // Store result in pages object
-        this.allPdfFiles[fileName].pages[pageNum] = {
+      const pages = await Promise.all(pagePromises);
+
+      // Process all pages in parallel
+      const pageResultPromises = pages.map(({ pageNum, page }) =>
+        this.processPage(page, pageNum, fileName, onLog).then((pageResult) => ({
+          pageNum,
+          pageResult,
+        }))
+      );
+
+      const pageResults = await Promise.all(pageResultPromises);
+
+      // Store results in order
+      pageResults.forEach(({ pageNum, pageResult }) => {
+        const pageData = {
           result: pageResult.result,
           scale: pageResult.scale,
           rotated: pageResult.rotated,
@@ -366,6 +390,13 @@ export class PDFManager {
           skipped: pageResult.skipped || false,
           partial: pageResult.partial || false,
         };
+
+        // Store result in memory or in temp storage
+        if (storeInMemory) {
+          this.allPdfFiles[fileName].pages[pageNum] = pageData;
+        } else {
+          fileResults[pageNum] = pageData;
+        }
 
         // Progress callback
         if (onPageComplete) {
@@ -376,23 +407,33 @@ export class PDFManager {
             pageResult,
           });
         }
-      }
+      });
 
       log("complete", `Processing complete. ${totalPages} page(s) processed.`);
+
+      const resultsToReturn = storeInMemory
+        ? this.allPdfFiles[fileName].pages
+        : fileResults;
+
       return {
         fileName,
         structureId,
         totalPages,
-        results: this.allPdfFiles[fileName].pages,
+        results: resultsToReturn,
         success: true,
       };
     } catch (err) {
       log("error", `Failed to process: ${err.message}`);
+
+      const resultsToReturn = storeInMemory
+        ? this.allPdfFiles[fileName].pages
+        : fileResults;
+
       return {
         fileName,
         structureId,
         totalPages: 0,
-        results: this.allPdfFiles[fileName].pages,
+        results: resultsToReturn,
         success: false,
         error: err.message,
       };
@@ -404,14 +445,20 @@ export class PDFManager {
    * @param {File[]} pdfFiles - Array of PDF files to process
    * @param {Function} onFileComplete - Optional callback when a file completes
    * @param {Function} onPageComplete - Optional callback for page progress
+   * @param {boolean} clearMemoryAfterFile - Clear memory after each file (default: false)
    * @returns {Promise<Object>} - All results
    */
-  async processFiles(pdfFiles, onFileComplete = null, onPageComplete = null) {
+  async processFiles(pdfFiles, onFileComplete = null, onPageComplete = null, clearMemoryAfterFile = false) {
     for (const pdfFile of pdfFiles) {
       const fileResult = await this.processFile(pdfFile, onPageComplete);
 
       if (onFileComplete) {
         onFileComplete(fileResult);
+      }
+
+      // Clear memory after processing if requested
+      if (clearMemoryAfterFile) {
+        this.clearFileFromMemory(pdfFile.name);
       }
     }
 
@@ -486,6 +533,16 @@ export class PDFManager {
    */
   clearResults() {
     this.allPdfFiles = {};
+  }
+
+  /**
+   * Clear a specific file from memory to free up space
+   * @param {string} fileName - Name of the file to clear
+   */
+  clearFileFromMemory(fileName) {
+    if (this.allPdfFiles[fileName]) {
+      delete this.allPdfFiles[fileName];
+    }
   }
 
   /**

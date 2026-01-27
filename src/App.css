@@ -448,3 +448,176 @@ body {
 
 .log-retry .log-icon { color: #8b5cf6; }
 .log-retry .log-text { color: #c4b5fd; }
+
+/* --- BATCH PROCESSING MODE --- */
+.control-panel {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.mode-selector {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.25rem;
+}
+
+.mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-sub);
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  background: #f1f5f9;
+  color: var(--text-main);
+}
+
+.mode-btn.active {
+  background: var(--primary);
+  color: white;
+}
+
+.batch-mode-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.batch-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.batch-input-group label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-main);
+}
+
+.batch-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.batch-input-row input {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  background: white;
+  transition: all 0.2s;
+}
+
+.batch-input-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.batch-input-row input:disabled {
+  background: #f8fafc;
+  color: var(--text-sub);
+  cursor: not-allowed;
+}
+
+.batch-input-row button {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.batch-input-row button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+}
+
+.batch-input-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.batch-start-btn {
+  padding: 0.75rem 2rem;
+  background: var(--success);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  margin-top: 0.5rem;
+}
+
+.batch-start-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
+}
+
+.batch-start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--text-sub);
+}
+
+.batch-upload-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  border: 2px dashed var(--primary);
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.batch-upload-label:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: var(--primary);
+}
+
+.batch-upload-label input {
+  display: none;
+}
+
+.batch-upload-label span {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 1rem;
+  pointer-events: none;
+}
+
+.batch-help-text {
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 0.85rem;
+  margin: 1rem 0 0 0;
+  padding: 0;
+}

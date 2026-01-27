@@ -3,14 +3,27 @@ import "./App.css";
 import { PDFManager } from "./PDFManager";
 import { Logger, createLogEntry } from "./Logger";
 import { structures } from "./structures";
+import { createElectronFileLogger } from "./ElectronFileLogger";
+import { createElectronBatchProcessor } from "./ElectronBatchProcessor";
 
 function App() {
-  const [filesQueue, setFilesQueue] = useState([]);
+  const [mode, setMode] = useState("upload"); // "upload" or "batch"
+  const [primaryDir, setPrimaryDir] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [logs, setLogs] = useState([]);
   const [processingStartTime, setProcessingStartTime] = useState(null);
   const [totalElapsedTime, setTotalElapsedTime] = useState(0);
   const [liveElapsed, setLiveElapsed] = useState(0);
+
+  // Batch mode counters and tracking (no in-memory logs!)
+  const [batchStats, setBatchStats] = useState({
+    totalFiles: 0,
+    processedFiles: 0,
+    completedFiles: 0,
+    errorFiles: 0,
+    currentBatch: 0,
+    currentFileInBatch: 0,
+    currentFileName: "",
+  });
 
   // Live timer during processing
   useEffect(() => {
@@ -24,94 +37,73 @@ function App() {
     return () => clearInterval(interval);
   }, [processingStartTime]);
 
-  const handleFiles = async (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    if (selectedFiles.length === 0) return;
-
-    const newQueueItems = selectedFiles.map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      name: file.name,
-      status: "pending",
-      results: [],
-      progress: { current: 0, total: 0 },
-      error: null,
-    }));
-
-    setFilesQueue((prev) => [...prev, ...newQueueItems]);
-
-    if (!isProcessing) {
-      setTimeout(() => processQueue([...filesQueue, ...newQueueItems]), 0);
+  // Handle batch mode directory selection
+  const handleSelectDirectory = async () => {
+    try {
+      const dirPath = await window.electronAPI?.dialog?.selectDirectory?.();
+      if (dirPath) {
+        setPrimaryDir(dirPath);
+      }
+    } catch (err) {
+      console.error("Failed to select directory:", err);
     }
   };
 
-  const updateItemStatus = useCallback((id, status, extraData = {}) => {
-    setFilesQueue((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, status, ...extraData } : item
-      )
-    );
-  }, []);
+  // Start batch processing
+  const startBatchProcessing = async () => {
+    if (!primaryDir) return;
 
-  const addLog = useCallback((logData) => {
-    setLogs((prev) => [...prev, createLogEntry(logData)]);
-  }, []);
-
-  const processQueue = async (currentQueue) => {
     setIsProcessing(true);
     const startTime = Date.now();
     setProcessingStartTime(startTime);
 
-    for (const currentItem of currentQueue) {
-      if (currentItem.status !== "pending") continue;
+    try {
+      // Initialize file logger (CSV on disk)
+      const logger = createElectronFileLogger(
+        `${primaryDir}/logs`,
+        `batch-${Date.now()}.csv`
+      );
+      await logger.initialize();
 
-      updateItemStatus(currentItem.id, "processing");
+      // Create batch processor
+      const processor = createElectronBatchProcessor(primaryDir, {
+        initialScale: 3,
+        maxScale: 9,
+        minScale: 1,
+        enableRotation: true,
+        structure: structures[0],
+      });
 
-      try {
-        // Create a new PDFManager for each file with config and structure
-        // TODO: Allow user to select structure or auto-detect
-        const manager = new PDFManager({
-          initialScale: 3,
-          maxScale: 9,
-          minScale: 1,
-          enableRotation: true,
-          structure: structures[0], // Use first structure for now
-        });
+      processor.setFileLogger(logger);
 
-        // Process with progress and log callbacks
-        await manager.processFile(
-          currentItem.file,
-          (progressData) => {
-            updateItemStatus(currentItem.id, "processing", {
-              progress: {
-                current: progressData.pageNumber,
-                total: progressData.totalPages,
-              },
-            });
-          },
-          addLog
-        );
+      // Process all batches - only update counters, NO logs in memory
+      await processor.processBatches((progress) => {
+        setBatchStats((prev) => ({
+          ...prev,
+          currentBatch: progress.batchNumber,
+          currentFileInBatch: progress.currentFile,
+          currentFileName: progress.fileName,
+          processedFiles: prev.processedFiles + 1,
+          completedFiles: progress.success
+            ? prev.completedFiles + 1
+            : prev.completedFiles,
+          errorFiles: !progress.success ? prev.errorFiles + 1 : prev.errorFiles,
+        }));
+      }, { PDFManager, structures });
 
-        // Get results formatted for UI
-        const uiResults = manager.getResultsForUI();
-        const fileResults = uiResults[0]?.results || [];
-
-        updateItemStatus(currentItem.id, "completed", {
-          results: fileResults,
-          progress: { current: fileResults.length, total: fileResults.length },
-        });
-      } catch (err) {
-        console.error(err);
-        addLog({ type: "error", message: err.message, fileName: currentItem.name });
-        updateItemStatus(currentItem.id, "error", { error: err.message });
-      }
+      await logger.close();
+    } catch (err) {
+      console.error("Batch processing failed:", err);
+    } finally {
+      const endTime = Date.now();
+      setTotalElapsedTime((prev) => prev + (endTime - startTime));
+      setProcessingStartTime(null);
+      setIsProcessing(false);
     }
-
-    const endTime = Date.now();
-    setTotalElapsedTime((prev) => prev + (endTime - startTime));
-    setProcessingStartTime(null);
-    setIsProcessing(false);
   };
+
+  // Upload mode is now deprecated - not used
+  // All operations go through batch mode with disk-based logging
 
   // Calculate stats for display
   const completedCount = filesQueue.filter((f) => f.status === "completed").length;
@@ -159,16 +151,41 @@ function App() {
         )}
       </header>
 
+      <div className="control-panel">
+        <div className="mode-selector">
+          <button
+            className={`mode-btn ${!batchMode ? "active" : ""}`}
+            onClick={() => setBatchMode(false)}
+          >
+            Upload Mode
+          </button>
+          <button
+            className={`mode-btn ${batchMode ? "active" : ""}`}
+            onClick={() => setBatchMode(true)}
+          >
+            Batch Mode
+          </button>
+        </div>
+      </div>
+
       <div className="upload-zone">
-        <label className="upload-btn">
-          <input
-            type="file"
-            accept="application/pdf"
-            multiple
-            onChange={handleFiles}
+        {!batchMode ? (
+          <label className="upload-btn">
+            <input
+              type="file"
+              accept="application/pdf"
+              multiple
+              onChange={handleFiles}
+              disabled={isProcessing}
+            />
+            <span>+ Upload PDFs</span>
+          </label>
+        ) : (
+          <BatchModeControls
+            isProcessing={isProcessing}
+            onStart={processBatch}
           />
-          <span>+ Upload PDFs</span>
-        </label>
+        )}
       </div>
 
       <Logger logs={logs} maxHeight={250} />
@@ -291,6 +308,35 @@ function FileCard({ data }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BatchModeControls({ isProcessing, onStart }) {
+  const handleBatchFilesSelect = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length > 0) {
+      onStart(selectedFiles);
+    }
+  };
+
+  return (
+    <div className="batch-mode-controls">
+      <label className="batch-upload-label">
+        <input
+          type="file"
+          accept="application/pdf"
+          multiple
+          onChange={handleBatchFilesSelect}
+          disabled={isProcessing}
+        />
+        <span>
+          {isProcessing ? "Processing..." : "+ Select PDFs for Batch Processing"}
+        </span>
+      </label>
+      <p className="batch-help-text">
+        Select multiple PDF files to process them in batches of 5. Files will be processed sequentially with logs stored in your browser.
+      </p>
     </div>
   );
 }
