@@ -10,16 +10,12 @@ const App = () => {
   const [currentBatch, setCurrentBatch] = useState([])
   const [batchProgress, setBatchProgress] = useState({})
   const [filePageProgress, setFilePageProgress] = useState({})
-  const [activeFileCount, setActiveFileCount] = useState(0)
   
   // Counter and timer state
   const [currentFileIndex, setCurrentFileIndex] = useState(0)
   const [totalFiles, setTotalFiles] = useState(0)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [startTime, setStartTime] = useState(null)
-  
-  // Target total pages to process in parallel across all files
-  const TARGET_PARALLEL_PAGES = 3
   
   // Refs for tracking
   const timerInterval = useRef(null)
@@ -49,22 +45,9 @@ const App = () => {
   }
 
   /**
-   * Calculate parallel page batch size based on active files
-   * Goal: Always process TARGET_PARALLEL_PAGES (3) pages total across all files
-   */
-  const calculateParallelPageBatchSize = (activeFiles) => {
-    if (activeFiles <= 0) return TARGET_PARALLEL_PAGES
-    // Distribute 3 pages among active files
-    // 3 files: 3/3 = 1 page each
-    // 2 files: 3/2 = 1.5 → 2 pages each (4 total, slightly over)
-    // 1 file: 3/1 = 3 pages
-    return Math.max(1, Math.ceil(TARGET_PARALLEL_PAGES / activeFiles))
-  }
-
-  /**
    * Process a single file and return results
    */
-  const processFileWithManager = async (file, batchSize) => {
+  const processFileWithManager = async (file) => {
     try {
       // Mark file as processing
       setBatchProgress((prev) => ({
@@ -78,9 +61,7 @@ const App = () => {
         [file.name]: { currentPage: 0, totalPages: 0 },
       }))
 
-      // Calculate page batch size based on current active file count
-      const parallelPageBatchSize = calculateParallelPageBatchSize(batchSize)
-      const pdfManager = createPDFManager({ parallelPageBatchSize })
+      const pdfManager = createPDFManager()
       
       // Pass callback to track page completion
       const fileResult = await pdfManager.processFile(
@@ -156,7 +137,7 @@ const App = () => {
     const BATCH_SIZE = 3
 
     try {
-      // Process files in batches of 3
+      // Process files in batches of 5
       for (let i = 0; i < selectedFiles.length; i += BATCH_SIZE) {
         const batch = selectedFiles.slice(i, i + BATCH_SIZE)
         
@@ -164,11 +145,9 @@ const App = () => {
         setCurrentBatch(batch)
         setBatchProgress({})
         setFilePageProgress({})
-        setActiveFileCount(batch.length)
         
-        // Process batch with dynamic page batch sizing
-        // Each file gets parallelPageBatchSize based on how many files are in batch
-        const batchPromises = batch.map((file) => processFileWithManager(file, batch.length))
+        // Process batch in parallel
+        const batchPromises = batch.map((file) => processFileWithManager(file))
         const batchResults = await Promise.all(batchPromises)
         
         processedResults.push(...batchResults)
@@ -183,7 +162,6 @@ const App = () => {
       setCurrentBatch([])
       setBatchProgress({})
       setFilePageProgress({})
-      setActiveFileCount(0)
       if (timerInterval.current) {
         clearInterval(timerInterval.current)
       }
