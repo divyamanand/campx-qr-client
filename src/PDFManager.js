@@ -38,8 +38,8 @@ export class PDFManager {
     this.scanner = new ScanImage();
     this.pdfToImage = new PDFToImage();
 
-    // Results storage: { fileName: { structureId, pages: { pageNumber: { result, scale, rotated } } } }
-    this.allPdfFiles = {};
+    // Results storage for single file: { fileName, structureId, pages: { pageNumber: { result, scale, rotated } } }
+    this.pdfFile = null;
   }
 
   /**
@@ -331,7 +331,8 @@ export class PDFManager {
     const structureId = this.config.structure?.structureID || null;
 
     // Initialize file entry with structureId
-    this.allPdfFiles[fileName] = {
+    this.pdfFile = {
+      fileName,
       structureId,
       pages: {},
     };
@@ -358,7 +359,7 @@ export class PDFManager {
         const pageResult = await this.processPage(page, pageNum, fileName, onLog);
 
         // Store result in pages object
-        this.allPdfFiles[fileName].pages[pageNum] = {
+        this.pdfFile.pages[pageNum] = {
           result: pageResult.result,
           scale: pageResult.scale,
           rotated: pageResult.rotated,
@@ -383,7 +384,7 @@ export class PDFManager {
         fileName,
         structureId,
         totalPages,
-        results: this.allPdfFiles[fileName].pages,
+        results: this.pdfFile.pages,
         success: true,
       };
     } catch (err) {
@@ -392,7 +393,7 @@ export class PDFManager {
         fileName,
         structureId,
         totalPages: 0,
-        results: this.allPdfFiles[fileName].pages,
+        results: this.pdfFile ? this.pdfFile.pages : {},
         success: false,
         error: err.message,
       };
@@ -400,92 +401,76 @@ export class PDFManager {
   }
 
   /**
-   * Process multiple PDF files
-   * @param {File[]} pdfFiles - Array of PDF files to process
-   * @param {Function} onFileComplete - Optional callback when a file completes
+   * Process a single PDF file
+   * @param {File} pdfFile - PDF file to process
    * @param {Function} onPageComplete - Optional callback for page progress
-   * @returns {Promise<Object>} - All results
+   * @returns {Promise<Object>} - Results
    */
-  async processFiles(pdfFiles, onFileComplete = null, onPageComplete = null) {
-    for (const pdfFile of pdfFiles) {
-      const fileResult = await this.processFile(pdfFile, onPageComplete);
-
-      if (onFileComplete) {
-        onFileComplete(fileResult);
-      }
-    }
-
+  async processFiles(pdfFile, onPageComplete = null) {
+    await this.processFile(pdfFile, onPageComplete);
     return this.getTheScanResults();
   }
 
   /**
-   * Get all scan results
-   * @returns {Object} - The allPdfFiles map with all results
+   * Get scan results
+   * @returns {Object} - The pdfFile object with all results
    */
   getTheScanResults() {
-    return this.allPdfFiles;
+    return this.pdfFile || {};
   }
 
   /**
    * Get results formatted for the existing App UI
-   * @returns {Array} - Results in the format expected by FileCard component
+   * @returns {Object} - Results in the format expected by FileCard component
    */
   getResultsForUI() {
-    const uiResults = [];
+    if (!this.pdfFile) return null;
 
-    for (const [fileName, fileData] of Object.entries(this.allPdfFiles)) {
-      const pages = fileData.pages || fileData; // Support both old and new format
-      const fileResult = {
-        name: fileName,
-        structureId: fileData.structureId || null,
-        results: [],
-      };
+    const fileResult = {
+      name: this.pdfFile.fileName,
+      structureId: this.pdfFile.structureId || null,
+      results: [],
+    };
 
-      for (const [pageNum, pageData] of Object.entries(pages)) {
-        // Skip if this is the structureId field (for backward compat)
-        if (pageNum === "structureId" || pageNum === "pages") continue;
+    for (const [pageNum, pageData] of Object.entries(this.pdfFile.pages)) {
+      const qrs = pageData.result?.success
+        ? pageData.result.codes.map((code) => ({
+            success: true,
+            data: code.data,
+            format: code.format,
+            position: code.position,
+            ct: 1,
+          }))
+        : [
+            {
+              success: false,
+              data: null,
+              format: null,
+              ct: 0,
+              error: pageData.result?.error || "UNKNOWN_ERROR",
+            },
+          ];
 
-        const qrs = pageData.result?.success
-          ? pageData.result.codes.map((code) => ({
-              success: true,
-              data: code.data,
-              format: code.format,
-              position: code.position,
-              ct: 1,
-            }))
-          : [
-              {
-                success: false,
-                data: null,
-                format: null,
-                ct: 0,
-                error: pageData.result?.error || "UNKNOWN_ERROR",
-              },
-            ];
-
-        fileResult.results.push({
-          page: parseInt(pageNum),
-          qrs,
-          scale: pageData.scale,
-          rotated: pageData.rotated,
-          skipped: pageData.skipped || false,
-          partial: pageData.partial || false,
-        });
-      }
-
-      // Sort by page number
-      fileResult.results.sort((a, b) => a.page - b.page);
-      uiResults.push(fileResult);
+      fileResult.results.push({
+        page: parseInt(pageNum),
+        qrs,
+        scale: pageData.scale,
+        rotated: pageData.rotated,
+        skipped: pageData.skipped || false,
+        partial: pageData.partial || false,
+      });
     }
 
-    return uiResults;
+    // Sort by page number
+    fileResult.results.sort((a, b) => a.page - b.page);
+    return fileResult;
   }
 
   /**
-   * Clear all stored results
+   * Clear stored results
    */
   clearResults() {
-    this.allPdfFiles = {};
+    this.pdfFile = null;
   }
 
   /**
@@ -501,11 +486,9 @@ export class PDFManager {
     let partialPages = 0;
     let totalCodes = 0;
 
-    for (const fileData of Object.values(this.allPdfFiles)) {
-      totalFiles++;
-      const pages = fileData.pages || fileData;
-      for (const [key, pageData] of Object.entries(pages)) {
-        if (key === "structureId" || key === "pages") continue;
+    if (this.pdfFile) {
+      totalFiles = 1;
+      for (const pageData of Object.values(this.pdfFile.pages)) {
         totalPages++;
         if (pageData.skipped) {
           skippedPages++;
