@@ -1,6 +1,9 @@
 import { ScanImage } from "./ScanImage";
 import { PDFToImage } from "./PDFToImage";
 import { rotateImage } from "./imageUtils";
+import { ScaleSequenceGenerator } from "./ScaleSequenceGenerator";
+import { PageExpectationChecker } from "./PageExpectationChecker";
+import { ResultFormatter } from "./ResultFormatter";
 
 /**
  * Default configuration for PDFManager
@@ -15,13 +18,13 @@ const DEFAULT_CONFIG = {
 };
 
 /**
-//  * PDFManager - Orchestrates PDF processing with intelligent retry logic
+ * PDFManager - Orchestrates PDF processing with intelligent retry logic
  *
- * Responsibilities:
- * - Process PDF files page by page
- * - Coordinate between PDFToImage and ScanImage
-//  * - Implement retry logic with scale adjustments
- * - Track results in structured data
+ * Single Responsibility: Coordinate PDF page processing workflow
+ * - Delegates scale generation to ScaleSequenceGenerator
+ * - Delegates expectation checking to PageExpectationChecker
+ * - Delegates result formatting to ResultFormatter
+ * - Focuses on orchestrating the scanning process
  */
 export class PDFManager {
   /**
@@ -48,15 +51,10 @@ export class PDFManager {
    * @returns {Object|null} - { totalCodeCount, formats } or null if no structure/page defined
    */
   getPageExpectation(pageNumber) {
-    if (!this.config.structure || !this.config.structure.format) {
-      return null;
-    }
-
-    const pageFormat = this.config.structure.format.find(
-      (p) => p.pageNumber === pageNumber
+    return PageExpectationChecker.getPageExpectation(
+      this.config.structure,
+      pageNumber
     );
-
-    return pageFormat || null;
   }
 
   /**
@@ -66,76 +64,19 @@ export class PDFManager {
    * @returns {Object} - { met, foundCount, expectedCount, missingFormats }
    */
   checkPageExpectation(codes, expectation) {
-    if (!expectation) {
-      // No expectation - any result is acceptable
-      return { met: true, foundCount: codes.length, expectedCount: 0, missingFormats: [] };
-    }
-
-    // If totalCodeCount is 0, page expects no codes
-    if (expectation.totalCodeCount === 0) {
-      return { met: true, foundCount: codes.length, expectedCount: 0, missingFormats: [] };
-    }
-
-    // Count codes by format
-    const foundCounts = {};
-    for (const code of codes) {
-      foundCounts[code.format] = (foundCounts[code.format] || 0) + 1;
-    }
-
-    // Check each expected format
-    const missingFormats = [];
-    for (const expected of expectation.formats) {
-      const foundCount = foundCounts[expected.code] || 0;
-      if (foundCount < expected.count) {
-        missingFormats.push(`${expected.code} (found ${foundCount}/${expected.count})`);
-      }
-    }
-
-    return {
-      met: missingFormats.length === 0 && codes.length >= expectation.totalCodeCount,
-      foundCount: codes.length,
-      expectedCount: expectation.totalCodeCount,
-      missingFormats,
-    };
+    return PageExpectationChecker.check(codes, expectation);
   }
 
   /**
    * Generate the sequence of scales to try in the retry loop
-   * Pattern: initial, initial+1, initial-1, initial+2, initial-2, ...
    * @returns {number[]} Array of scales to try
    */
   generateScaleSequence() {
-    const { initialScale, maxScale, minScale } = this.config;
-    const scales = [initialScale];
-    const seen = new Set([initialScale]);
-
-    let offset = 1;
-    while (true) {
-      const higher = initialScale + offset;
-      const lower = initialScale - offset;
-
-      let addedAny = false;
-
-      if (higher <= maxScale && !seen.has(higher)) {
-        scales.push(higher);
-        seen.add(higher);
-        addedAny = true;
-      }
-
-      if (lower >= minScale && !seen.has(lower)) {
-        scales.push(lower);
-        seen.add(lower);
-        addedAny = true;
-      }
-
-      // Stop if we've exceeded both bounds
-      if (higher > maxScale && lower < minScale) break;
-      if (!addedAny && higher > maxScale) break;
-
-      offset++;
-    }
-
-    return scales;
+    return ScaleSequenceGenerator.generate(
+      this.config.initialScale,
+      this.config.maxScale,
+      this.config.minScale
+    );
   }
 
   /**
@@ -272,7 +213,7 @@ export class PDFManager {
               rotated,
               attempts: attemptedScales.size,
             };}
-          // } else {
+        PageExpectationChecker.shouldSkipPage(expectation)
             // Some codes found but expectation not met
             // log("warning", `Found ${check.foundCount}/${check.expectedCount} code(s) [${formatsFound}], missing: ${check.missingFormats.join(", ")}`, { scale, rotated });
           }
@@ -487,34 +428,22 @@ export class PDFManager {
     let partialPages = 0;
     let totalCodes = 0;
 
-    if (this.pdfFile) {
-      totalFiles = 1;
-      for (const pageData of Object.values(this.pdfFile.pages)) {
-        totalPages++;
-        if (pageData.skipped) {
-          skippedPages++;
-          successfulPages++;
-        } else if (pageData.success) {
-          successfulPages++;
-          if (pageData.partial) partialPages++;
-          totalCodes += pageData.result?.codes?.length || 0;
-        } else {
-          failedPages++;
-        }
-      }
-    }
-
-    return {
-      totalFiles,
-      totalPages,
-      successfulPages,
-      failedPages,
-      skippedPages,
-      partialPages,
-      totalCodes,
-      successRate: totalPages > 0 ? (successfulPages / totalPages) * 100 : 0,
-    };
+    return ResultFormatter.formatForUI(this.pdfFile);
   }
+
+  /**
+   * Clear stored results
+   */
+  clearResults() {
+    this.pdfFile = null;
+  }
+
+  /**
+   * Get summary statistics
+   * @returns {Object} - Summary of processing results
+   */
+  getSummary() {
+    return ResultFormatter.getSummary(this.pdfFile)  }
 }
 
 // Export a factory function for convenience
