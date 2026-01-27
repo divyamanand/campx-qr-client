@@ -1,15 +1,12 @@
 /**
  * Electron Main Process
  * Handles window management, file system operations, and IPC
+ * Using CommonJS for maximum Electron compatibility
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from "fs/promises";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
+const path = require("path");
+const fs = require("fs/promises");
 
 let mainWindow;
 const isDev = process.argv.includes("--dev");
@@ -273,3 +270,5 @@ app.on("activate", () => {
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
 });
+
+module.exports = { app, mainWindow };

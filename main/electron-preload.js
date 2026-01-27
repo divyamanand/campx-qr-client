@@ -1,9 +1,10 @@
 /**
  * Electron Preload Script
  * Exposes safe APIs to the renderer process via contextBridge
+ * Using CommonJS because preload runs in a special context
  */
 
-import { contextBridge, ipcRenderer } from "electron";
+const { contextBridge, ipcRenderer } = require("electron");
 
 // File system API
 const fsAPI = {

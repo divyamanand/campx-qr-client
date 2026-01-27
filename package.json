@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "description": "Batch PDF QR/Barcode Scanner with disk-based logging",
   "main": "main/electron-main.js",
-  "type": "module",
   "author": "",
   "license": "MIT",
   "scripts": {
