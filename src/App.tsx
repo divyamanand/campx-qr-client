@@ -1,352 +1,136 @@
-import { useState, useCallback, useEffect, ReactNode, FC, FormEvent } from "react";
-import "./App.css";
-import { PDFManager, FileResult, OnPageComplete, OnLog } from "./PDFManager";
-import { Logger, createLogEntry, LogEntry } from "./Logger";
+import { useEffect, useRef, useState } from "react";
+import { opencvInit } from "@shencom/wechat-opencv";
 
 /**
- * File queue item interface
+ * Declare global config used by @shencom/wechat-opencv
  */
-interface FileQueueItem {
-  id: string;
-  file: File;
-  name: string;
-  status: "pending" | "processing" | "completed" | "error";
-  results: unknown[];
-  progress: {
-    current: number;
-    total: number;
-  };
-  error: string | null;
+declare global {
+  interface Window {
+    OPENCV_JS_PATH?: string;
+    WECHAT_QRCODE_JS_PATH?: string;
+  }
 }
 
-/**
- * Main App component
- */
-const App: FC = () => {
-  const [filesQueue, setFilesQueue] = useState<FileQueueItem[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [processingStartTime, setProcessingStartTime] = useState<number | null>(
-    null
-  );
-  const [totalElapsedTime, setTotalElapsedTime] = useState(0);
-  const [liveElapsed, setLiveElapsed] = useState(0);
+function App() {
+  const cvRef = useRef<any>(null);
+  const detectorRef = useRef<any>(null);
 
-  // Live timer during processing
+  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // 🔹 Initialize OpenCV + WeChat QR ONCE
   useEffect(() => {
-    if (!processingStartTime) {
-      setLiveElapsed(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      setLiveElapsed(Date.now() - processingStartTime);
-    }, 100);
-    return () => clearInterval(interval);
-  }, [processingStartTime]);
+    let mounted = true;
 
-  const handleFiles = (e: FormEvent<HTMLInputElement>): void => {
-    const input = e.currentTarget;
-    const selectedFiles = Array.from(input.files || []);
-    if (selectedFiles.length === 0) return;
-
-    const newQueueItems: FileQueueItem[] = selectedFiles.map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      name: file.name,
-      status: "pending",
-      results: [],
-      progress: { current: 0, total: 0 },
-      error: null,
-    }));
-
-    setFilesQueue((prev) => [...prev, ...newQueueItems]);
-
-    if (!isProcessing) {
-      setTimeout(
-        () => processQueue([...filesQueue, ...newQueueItems]),
-        0
-      );
-    }
-  };
-
-  const updateItemStatus = useCallback(
-    (id: string, status: FileQueueItem["status"], extraData: Partial<FileQueueItem> = {}): void => {
-      setFilesQueue((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, status, ...extraData } : item
-        )
-      );
-    },
-    []
-  );
-
-  const addLog = useCallback((logData: Record<string, unknown>): void => {
-    setLogs((prev) => [...prev, createLogEntry(logData)]);
-  }, []);
-
-  const processQueue = async (currentQueue: FileQueueItem[]): Promise<void> => {
-    setIsProcessing(true);
-    const startTime = Date.now();
-    setProcessingStartTime(startTime);
-
-    // Collect all pending items
-    const pendingItems = currentQueue.filter(
-      (item) => item.status === "pending"
-    );
-
-    // Mark all as processing
-    pendingItems.forEach((item) => {
-      updateItemStatus(item.id, "processing");
-    });
-
-    // Create processing promises for all files in sequence
-    for (const currentItem of pendingItems) {
+    (async () => {
       try {
-        // Create a new PDFManager for each file
-        const manager = new PDFManager({
-          initialScale: 1,
-          maxScale: 3,
-        });
+        // ✅ Override default CDN paths (prevents 403)
+        window.OPENCV_JS_PATH = "/wechat_opencv/opencv.js";
+        window.WECHAT_QRCODE_JS_PATH =
+          "/wechat_opencv/wechat_qrcode_files.js";
 
-        // Process with progress and log callbacks
-        const onPageComplete: OnPageComplete = (progressData) => {
-          updateItemStatus(currentItem.id, "processing", {
-            progress: {
-              current: progressData.pageNumber,
-              total: progressData.totalPages,
-            },
-          });
-        };
+        // ✅ Must be called with NO arguments
+        const cv = await opencvInit();
 
-        const onLog: OnLog = (logEntry) => {
-          addLog(logEntry);
-        };
+        if (!mounted) return;
 
-        const fileResult: FileResult = await manager.processFile(
-          currentItem.file,
-          onPageComplete,
-          onLog
+        cvRef.current = cv;
+
+        // ✅ Initialize WeChat QR detector
+        detectorRef.current = new cv.wechat_qrcode_WeChatQRCode(
+          "/wechat_qrcode/detect.prototxt",
+          "/wechat_qrcode/detect.caffemodel",
+          "/wechat_qrcode/sr.prototxt",
+          "/wechat_qrcode/sr.caffemodel"
         );
 
-        // Format results for UI
-        const fileResults = Object.entries(
-          fileResult.pages || {}
-        ).map(([pageNum, pageData]) => ({
-          page: parseInt(pageNum),
-          codes: pageData.codes || [],
-          scale: pageData.scale,
-          attempts: pageData.attempts,
-          success: pageData.success,
-          error: pageData.error,
-        }));
-
-        updateItemStatus(currentItem.id, "completed", {
-          results: fileResults,
-          progress: {
-            current: fileResults.length,
-            total: fileResults.length,
-          },
-        });
-      } catch (err) {
-        const errorMsg =
-          err instanceof Error ? err.message : String(err);
-        addLog({
-          type: "error",
-          message: errorMsg,
-          fileName: currentItem.name,
-        });
-        updateItemStatus(currentItem.id, "error", {
-          error: errorMsg,
-        });
+        setReady(true);
+        console.log("✅ WeChat QR initialized");
+      } catch (e: any) {
+        console.error(e);
+        setError("Failed to initialize OpenCV");
       }
-    }
+    })();
 
-    const endTime = Date.now();
-    setTotalElapsedTime((prev) => prev + (endTime - startTime));
-    setProcessingStartTime(null);
-    setIsProcessing(false);
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // 🔹 Handle file input
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !ready) return;
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.crossOrigin = "anonymous";
+
+    img.onload = () => decodeImage(img);
   };
 
-  // Calculate stats for display
-  const completedCount = filesQueue.filter(
-    (f) => f.status === "completed"
-  ).length;
-  const totalCount = filesQueue.length;
-  const errorCount = filesQueue.filter((f) => f.status === "error").length;
+  // 🔹 Decode QR codes
+  const decodeImage = (img: HTMLImageElement) => {
+    const cv = cvRef.current;
+    const detector = detectorRef.current;
+    if (!cv || !detector) return;
 
-  const formatTime = (ms: number): string => {
-    if (ms < 1000) return `${ms}ms`;
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`;
+    setLoading(true);
+    setResult([]);
+    setError(null);
+
+    try {
+      const mat = cv.imread(img);
+      const points = new cv.MatVector();
+      const decoded = detector.detectAndDecode(mat, points);
+
+      const results: string[] = [];
+      for (let i = 0; i < decoded.size(); i++) {
+        results.push(decoded.get(i));
+      }
+
+      setResult(results.length ? results : ["No QR code detected"]);
+
+      // 🔥 OpenCV memory cleanup (MANDATORY)
+      mat.delete();
+      points.delete();
+      decoded.delete();
+    } catch (err) {
+      console.error(err);
+      setError("Failed to decode image");
+    } finally {
+      setLoading(false);
     }
-    return `${seconds}s`;
   };
 
   return (
-    <div className="app-container">
-      <header className="header">
-        <div className="header-main">
-          <h1>PDF QR Scanner</h1>
-          <p>Upload PDFs to detect QR codes</p>
-        </div>
-        {totalCount > 0 && (
-          <div className="header-stats">
-            <div className="stat-box">
-              <span className="stat-value">
-                {completedCount}/{totalCount}
-              </span>
-              <span className="stat-label">Files</span>
-            </div>
-            {errorCount > 0 && (
-              <div className="stat-box error">
-                <span className="stat-value">{errorCount}</span>
-                <span className="stat-label">Errors</span>
-              </div>
-            )}
-            {(totalElapsedTime > 0 || liveElapsed > 0) && (
-              <div className="stat-box">
-                <span className="stat-value">
-                  {formatTime(
-                    isProcessing
-                      ? totalElapsedTime + liveElapsed
-                      : totalElapsedTime
-                  )}
-                </span>
-                <span className="stat-label">Time</span>
-              </div>
-            )}
-          </div>
-        )}
-      </header>
+    <div style={{ padding: 24, fontFamily: "sans-serif" }}>
+      <h2>📷 WeChat QR Decoder (OpenCV)</h2>
 
-      <div className="upload-zone">
-        <label className="upload-btn">
-          <input
-            type="file"
-            accept="application/pdf"
-            multiple
-            onChange={handleFiles}
-          />
-          <span>+ Upload PDFs</span>
-        </label>
-      </div>
+      {!ready && <p>Loading OpenCV…</p>}
 
-      <Logger logs={logs} maxHeight={250} />
+      <input
+        type="file"
+        accept="image/*"
+        disabled={!ready || loading}
+        onChange={onFileChange}
+      />
 
-      <div className="cards-container">
-        {filesQueue.map((item) => (
-          <FileCard key={item.id} data={item} />
-        ))}
-      </div>
-    </div>
-  );
-};
+      {loading && <p>Decoding…</p>}
 
-/**
- * File card component for displaying individual file status
- */
-interface FileCardProps {
-  data: FileQueueItem;
-}
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
-const FileCard: FC<FileCardProps> = ({ data }) => {
-  const [expanded, setExpanded] = useState(false);
-  const { name, status, results, progress, error } = data;
-
-  const isProcessing = status === "processing";
-  const isComplete = status === "completed";
-  const hasData = isComplete && Array.isArray(results) && results.length > 0;
-
-  const toggleExpand = (): void => {
-    if (hasData) setExpanded(!expanded);
-  };
-
-  const resultCount = Array.isArray(results) ? results.length : 0;
-
-  return (
-    <div
-      className={`card ${status} ${expanded ? "expanded" : ""}`}
-      onClick={toggleExpand}
-    >
-      <div className="card-header">
-        <div className="header-top">
-          <div className="filename" title={name}>
-            {name}
-          </div>
-          <div className="status-indicator">
-            {isProcessing && <div className="spinner"></div>}
-            {isComplete && !error && (
-              <span className="icon-success">✓</span>
-            )}
-            {status === "error" && <span className="icon-error">!</span>}
-            {status === "pending" && <span className="icon-wait">•••</span>}
-          </div>
-        </div>
-
-        <div className="meta-info">
-          <div className="stats-block">
-            {isProcessing && (
-              <span>
-                Scanning page {progress.current}/{progress.total || "?"}...
-              </span>
-            )}
-            {status === "pending" && <span>Queued</span>}
-            {status === "error" && <span>Failed: {error}</span>}
-
-            {isComplete && (
-              <>
-                <span className="stat-item">
-                  <b>{resultCount}</b> pages
-                </span>
-              </>
-            )}
-          </div>
-
-          {hasData && (
-            <span className={`chevron ${expanded ? "rotate" : ""}`}>
-              ▼
-            </span>
-          )}
-        </div>
-      </div>
-
-      {expanded && hasData && (
-        <div className="card-body">
-          {results.map((result: unknown, idx: number) => {
-            const pageResult = result as Record<string, unknown>;
-            return (
-              <div key={idx} className="page-row">
-                <div className="page-label">
-                  Page {pageResult.page}
-                  {pageResult.scale && (
-                    <span className="scale-badge">
-                      @{pageResult.scale}x
-                    </span>
-                  )}
-                </div>
-
-                {Array.isArray(pageResult.codes) && pageResult.codes.length === 0 && (
-                  <span className="no-code-msg">No QR codes</span>
-                )}
-
-                {Array.isArray(pageResult.codes) &&
-                  pageResult.codes.map((code: unknown, codeIdx: number) => {
-                    const qrCode = code as Record<string, unknown>;
-                    return (
-                      <div key={codeIdx} className="qr-pill">
-                        <span className="qr-txt">{qrCode.data}</span>
-                      </div>
-                    );
-                  })}
-              </div>
-            );
-          })}
-        </div>
+      {result.length > 0 && (
+        <ul>
+          {result.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
       )}
     </div>
   );
-};
+}
 
 export default App;
