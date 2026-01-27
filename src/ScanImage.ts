@@ -1,4 +1,5 @@
 import cv from "@techstark/opencv-js";
+import jsQR from "jsqr";
 
 /**
  * QR Code detection result
@@ -26,10 +27,14 @@ export interface ScanImageOptions {
 }
 
 /**
- * ScanImage - Responsible for scanning images for QR codes using OpenCV.js
+ * ScanImage - Responsible for scanning images for QR codes
+ *
+ * Uses:
+ * - OpenCV.js for image preprocessing (scaling, grayscale conversion)
+ * - jsQR for QR code detection
  *
  * Single responsibility: Take a canvas element and optional scale factor,
- * then use OpenCV's QRCodeDetector to find and decode QR codes.
+ * then process it and detect QR codes.
  */
 export class ScanImage {
   private options: ScanImageOptions;
@@ -64,7 +69,7 @@ export class ScanImage {
   }
 
   /**
-   * Scan a canvas for QR codes using OpenCV QRCodeDetector
+   * Scan a canvas for QR codes using OpenCV preprocessing + jsQR detection
    * @param canvas - The canvas element containing the image
    * @param scale - The scale factor (1 = original size)
    * @returns Scan result with codes or error
@@ -98,22 +103,26 @@ export class ScanImage {
       const grayMat = new cv.Mat();
       cv.cvtColor(processedMat, grayMat, cv.COLOR_RGBA2GRAY);
 
-      // Create QRCodeDetector and detect + decode
-      const qrDetector = new cv.QRCodeDetector();
-      const decodedText = new cv.Mat();
-      const points = new cv.Mat();
+      // Extract image data from grayscale Mat
+      const imageData = new ImageData(
+        new Uint8ClampedArray(grayMat.data8U),
+        grayMat.cols,
+        grayMat.rows
+      );
 
-      // detectAndDecode returns true if QR code detected and decoded successfully
-      const detected = qrDetector.detectAndDecode(grayMat, points, decodedText);
+      // Use jsQR for QR code detection
+      const qrResult = jsQR(
+        imageData.data,
+        imageData.width,
+        imageData.height,
+        { inversionAttempts: "dontInvert" }
+      );
 
-      // Clean up
+      // Clean up OpenCV resources
       processedMat.delete();
       grayMat.delete();
-      points.delete();
 
-      if (!detected) {
-        qrDetector.delete();
-        decodedText.delete();
+      if (!qrResult) {
         return {
           success: false,
           codes: [],
@@ -121,39 +130,19 @@ export class ScanImage {
         };
       }
 
-      // Extract decoded text from Mat
-      let decodedString = "";
-      if (decodedText.rows > 0) {
-        const dataPtr = cv.matFromArray(
-          decodedText.rows,
-          decodedText.cols,
-          decodedText.type(),
-          decodedText.data32F
-        );
-        const text = cv.matToString(dataPtr);
-        decodedString = text || "";
-        dataPtr.delete();
-      }
-
-      qrDetector.delete();
-      decodedText.delete();
-
-      // Return as array with single QR code result
-      const codes: QRCode[] =
-        decodedString && decodedString.length > 0
-          ? [
-              {
-                data: decodedString,
-                format: "QRCode",
-                position: null, // OpenCV doesn't easily provide corner points
-              },
-            ]
-          : [];
+      // Return detected QR code
+      const codes: QRCode[] = [
+        {
+          data: qrResult.data,
+          format: "QRCode",
+          position: null, // jsQR provides location but we don't need it for now
+        },
+      ];
 
       return {
-        success: codes.length > 0,
+        success: true,
         codes,
-        error: codes.length > 0 ? null : "DECODE_FAILED",
+        error: null,
       };
     } catch (err) {
       console.error("ScanImage error:", err);
