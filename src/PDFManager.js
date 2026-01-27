@@ -12,15 +12,16 @@ const DEFAULT_CONFIG = {
   enableRotation: true,
   rotationDegrees: 180,
   structure: null, // Structure definition for expected codes per page
+  parallelPageBatchSize: 1, // Number of pages to process in parallel (3-4 recommended)
 };
 
 /**
- * PDFManager - Orchestrates PDF processing with intelligent retry logic
+//  * PDFManager - Orchestrates PDF processing with intelligent retry logic
  *
  * Responsibilities:
  * - Process PDF files page by page
  * - Coordinate between PDFToImage and ScanImage
- * - Implement retry logic with scale adjustments
+//  * - Implement retry logic with scale adjustments
  * - Track results in structured data
  */
 export class PDFManager {
@@ -32,6 +33,7 @@ export class PDFManager {
    * @param {boolean} config.enableRotation - Whether to try rotation on failure (default: true)
    * @param {number} config.rotationDegrees - Degrees to rotate on retry (default: 180)
    * @param {Object} config.structure - Structure definition with expected codes per page
+   * @param {number} config.parallelPageBatchSize - Number of pages to process in parallel (default: 4)
    */
   constructor(config = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -168,7 +170,7 @@ export class PDFManager {
    * @param {PDFPageProxy} page - PDF page to process
    * @param {number} pageNumber - Page number
    * @param {string} fileName - File name for tracking
-   * @param {Function} onLog - Optional callback for logging events
+  // //  * @param {Function} onLog - Optional callback for logging events
    * @returns {Promise<PageResult>}
    */
   async processPage(page, pageNumber, fileName, onLog = null) {
@@ -183,34 +185,35 @@ export class PDFManager {
     let bestScale = null;
     let bestRotated = false;
 
-    const log = (type, message, extra = {}) => {
-      if (onLog) {
-        onLog({
-          type,
-          message,
-          fileName,
-          pageNumber,
-          attemptCount: attemptedScales.size,
-          ...extra,
-        });
-      }
-    };
+    // const log = (type, message, extra = {}) => {
+      // if (onLog) {
+        // onLog({
+    //       type,
+    //       message,
+    //       fileName,
+    //       pageNumber,
+    //       attemptCount: attemptedScales.size,
+    //       ...extra,
+    //     });
+    //   }
+    // };
 
     // Log expectation info
-    if (expectation) {
-      if (expectation.totalCodeCount === 0) {
-        log("info", "Starting page scan - expecting no codes", { scale: this.config.initialScale });
-      } else {
-        const expectedFormats = expectation.formats.map((f) => `${f.code}(${f.count})`).join(", ");
-        log("info", `Starting page scan - expecting ${expectation.totalCodeCount} code(s): ${expectedFormats}`, { scale: this.config.initialScale });
-      }
-    } else {
-      log("info", "Starting page scan - no structure defined", { scale: this.config.initialScale });
-    }
+    // if (expectation) {
+      // if (expectation.totalCodeCount === 0) {
+        // log("info", "Starting page scan - expecting no codes", { scale: this.config.initialScale });
+      // } else {
+        // const expectedFormats = expectation.formats.map((f) => `${f.code}(${f.count})`).join(", ");
+        // log("info", `Starting page scan - expecting ${expectation.totalCodeCount} code(s): ${expectedFormats}`, { scale: this.config.initialScale });
+      // }
+    // }
+    // } else {
+      // log("info", "Starting page scan - no structure defined", { scale: this.config.initialScale });
+    // }
 
     // Early exit if page expects no codes
     if (expectation && expectation.totalCodeCount === 0) {
-      log("success", "Page expects no codes - skipping scan", { scale: this.config.initialScale });
+      // log("success", "Page expects no codes - skipping scan", { scale: this.config.initialScale });
       return {
         success: true,
         result: { success: true, codes: [], error: null },
@@ -226,30 +229,30 @@ export class PDFManager {
       if (attemptedScales.has(scale)) continue;
       attemptedScales.add(scale);
 
-      if (attemptedScales.size > 1) {
-        log("retry", `Retrying with scale change`, { scale, attemptCount: attemptedScales.size });
-      }
+      // if (attemptedScales.size > 1) {
+      //   // log("retry", `Retrying with scale change`, { scale, attemptCount: attemptedScales.size });
+      // }
 
       try {
         // Convert page to image at current scale
-        log("info", "Converting page to image", { scale });
+        // log("info", "Converting page to image", { scale });
         const imageResult = await this.pdfToImage.convertPageToImage(page, scale);
 
         // First try: scan original
-        log("info", "Scanning image", { scale });
+        // log("info", "Scanning image", { scale });
         let result = await this.scanner.scan(imageResult.blob);
         let rotated = false;
 
         // If no success on original, try rotated
         if (!result.success && this.config.enableRotation) {
-          log("retry", "Trying with rotated image", { scale, rotated: true });
+          // log("retry", "Trying with rotated image", { scale, rotated: true });
           const rotatedBlob = await rotateImage(imageResult.blob, this.config.rotationDegrees);
           result = await this.scanner.scan(rotatedBlob);
           rotated = true;
         }
 
         if (result.success) {
-          const formatsFound = result.codes.map((c) => c.format).join(", ");
+          // const formatsFound = result.codes.map((c) => c.format).join(", ");
 
           // Track best result (most codes found)
           if (!bestResult || result.codes.length > bestResult.codes.length) {
@@ -263,23 +266,23 @@ export class PDFManager {
 
           if (check.met) {
             // Expectation met - early exit
-            log("success", `Found ${result.codes.length} code(s): ${formatsFound}`, { scale, rotated });
+            // log("success", `Found ${result.codes.length} code(s): ${formatsFound}`, { scale, rotated });
             return {
               success: true,
               result,
               scale,
               rotated,
               attempts: attemptedScales.size,
-            };
-          } else {
+            };}
+          // } else {
             // Some codes found but expectation not met
-            log("warning", `Found ${check.foundCount}/${check.expectedCount} code(s) [${formatsFound}], missing: ${check.missingFormats.join(", ")}`, { scale, rotated });
+            // log("warning", `Found ${check.foundCount}/${check.expectedCount} code(s) [${formatsFound}], missing: ${check.missingFormats.join(", ")}`, { scale, rotated });
           }
-        } else {
-          log("warning", "No codes found at this scale", { scale });
-        }
+        // } else {
+          // log("warning", "No codes found at this scale", { scale });
+        // }
       } catch (err) {
-        log("error", `Error: ${err.message}`, { scale });
+        // log("error", `Error: ${err.message}`, { scale });
         console.warn(`Error processing page ${pageNumber} at scale ${scale}:`, err);
         // Continue to next scale on error
       }
@@ -288,12 +291,12 @@ export class PDFManager {
     // All scales exhausted
     if (bestResult) {
       // Return best result even if expectation not fully met
-      const formatsFound = bestResult.codes.map((c) => c.format).join(", ");
-      log("warning", `Exhausted all scales. Best result: ${bestResult.codes.length} code(s) [${formatsFound}]`, {
-        scale: bestScale,
-        rotated: bestRotated,
-        attemptCount: attemptedScales.size
-      });
+      // const formatsFound = bestResult.codes.map((c) => c.format).join(", ");
+      // log("warning", `Exhausted all scales. Best result: ${bestResult.codes.length} code(s) [${formatsFound}]`, {
+      //   scale: bestScale,
+      //   rotated: bestRotated,
+      //   attemptCount: attemptedScales.size
+      // });
       return {
         success: true,
         result: bestResult,
@@ -305,7 +308,7 @@ export class PDFManager {
     }
 
     // All attempts failed - no codes found at all
-    log("error", "All retry attempts failed - no codes found", { attemptCount: attemptedScales.size });
+    // log("error", "All retry attempts failed - no codes found", { attemptCount: attemptedScales.size });
     return {
       success: false,
       result: {
@@ -323,7 +326,7 @@ export class PDFManager {
    * Process an entire PDF file
    * @param {File} pdfFile - The PDF file to process
    * @param {Function} onPageComplete - Optional callback for progress updates
-   * @param {Function} onLog - Optional callback for logging events
+  // //  * @param {Function} onLog - Optional callback for logging events
    * @returns {Promise<FileResult>}
    */
   async processFile(pdfFile, onPageComplete = null, onLog = null) {
@@ -337,49 +340,72 @@ export class PDFManager {
       pages: {},
     };
 
-    const log = (type, message, extra = {}) => {
-      if (onLog) {
-        onLog({
-          type,
-          message,
-          fileName,
-          ...extra,
-        });
-      }
-    };
+    // const log = (type, message, extra = {}) => {
+      // if (onLog) {
+        // onLog({
+    //       type,
+    //       message,
+    //       fileName,
+    //       ...extra,
+    //     });
+    //   }
+    // };
 
     try {
-      log("start", `Loading PDF document${structureId ? ` (Structure ID: ${structureId})` : ""}`);
+      // log("start", `Loading PDF document${structureId ? ` (Structure ID: ${structureId})` : ""}`);
       const pdf = await this.pdfToImage.loadDocument(pdfFile);
       const totalPages = pdf.numPages;
-      log("info", `PDF loaded with ${totalPages} page(s)`);
+      // log("info", `PDF loaded with ${totalPages} page(s)`);
 
-      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const pageResult = await this.processPage(page, pageNum, fileName, onLog);
+      const pageBatchSize = this.config.parallelPageBatchSize;
 
-        // Store result in pages object
-        this.pdfFile.pages[pageNum] = {
-          result: pageResult.result,
-          scale: pageResult.scale,
-          rotated: pageResult.rotated,
-          success: pageResult.success,
-          skipped: pageResult.skipped || false,
-          partial: pageResult.partial || false,
-        };
+      // Process pages in parallel batches
+      for (let pageNum = 1; pageNum <= totalPages; pageNum += pageBatchSize) {
+        // Create batch of pages (3-4 pages per batch)
+        const batchEnd = Math.min(pageNum + pageBatchSize - 1, totalPages);
+        const pageBatch = [];
 
-        // Progress callback
-        if (onPageComplete) {
-          onPageComplete({
-            fileName,
-            pageNumber: pageNum,
-            totalPages,
-            pageResult,
-          });
+        // Load all pages in batch
+        for (let i = pageNum; i <= batchEnd; i++) {
+          pageBatch.push(pdf.getPage(i));
         }
+
+        // Get all pages concurrently
+        const pages = await Promise.all(pageBatch);
+
+        // Process all pages in batch concurrently
+        const pagePromises = pages.map((page, index) => {
+          const currentPageNum = pageNum + index;
+          return this.processPage(page, currentPageNum, fileName, onLog);
+        });
+
+        const pageResults = await Promise.all(pagePromises);
+
+        // Store results in order
+        pageResults.forEach((pageResult, index) => {
+          const currentPageNum = pageNum + index;
+          this.pdfFile.pages[currentPageNum] = {
+            result: pageResult.result,
+            scale: pageResult.scale,
+            rotated: pageResult.rotated,
+            success: pageResult.success,
+            skipped: pageResult.skipped || false,
+            partial: pageResult.partial || false,
+          };
+
+          // Progress callback
+          if (onPageComplete) {
+            onPageComplete({
+              fileName,
+              pageNumber: currentPageNum,
+              totalPages,
+              pageResult,
+            });
+          }
+        });
       }
 
-      log("complete", `Processing complete. ${totalPages} page(s) processed.`);
+      // log("complete", `Processing complete. ${totalPages} page(s) processed.`);
       return {
         fileName,
         structureId,
@@ -388,7 +414,7 @@ export class PDFManager {
         success: true,
       };
     } catch (err) {
-      log("error", `Failed to process: ${err.message}`);
+      // log("error", `Failed to process: ${err.message}`);
       return {
         fileName,
         structureId,
