@@ -27,9 +27,20 @@ declare module "@techstark/opencv-js" {
   // QRCodeDetector
   class QRCodeDetector {
     constructor();
-    detectAndDecode(img: Mat, points: Mat, decodedText: Mat): boolean;
     detect(img: Mat, points: Mat): boolean;
     decode(img: Mat, points: Mat, decodedText: Mat): string;
+    detectAndDecode(img: Mat, points: Mat, decodedText: Mat): boolean;
+    delete(): void;
+  }
+
+  // Barcode Detector
+  class barcode_BarcodeDetector {
+    constructor();
+    detect(img: Mat): {
+      barcodes: string[];
+      points: Mat;
+    };
+    decode(img: Mat, points: Mat): string[];
     delete(): void;
   }
 
