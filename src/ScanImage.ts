@@ -1,13 +1,43 @@
 import cv from "@techstark/opencv-js";
 
 /**
- * ScanImage - Responsible for scanning images for QR codes/barcodes using OpenCV.js
+ * QR Code detection result
+ */
+export interface QRCode {
+  data: string;
+  format: "QRCode";
+  position: null;
+}
+
+/**
+ * Scan result from QR code detection
+ */
+export interface ScanResult {
+  success: boolean;
+  codes: QRCode[];
+  error: string | null;
+}
+
+/**
+ * ScanImage configuration options
+ */
+export interface ScanImageOptions {
+  interpolation?: number;
+}
+
+/**
+ * ScanImage - Responsible for scanning images for QR codes using OpenCV.js
  *
  * Single responsibility: Take a canvas element and optional scale factor,
  * then use OpenCV's QRCodeDetector to find and decode QR codes.
  */
 export class ScanImage {
-  constructor(options = {}) {
+  private options: {
+    interpolation: number;
+  };
+  private initialized: boolean;
+
+  constructor(options: ScanImageOptions = {}) {
     this.options = {
       // Interpolation method for scaling: cv.INTER_LINEAR (default), cv.INTER_AREA, cv.INTER_CUBIC
       interpolation: options.interpolation ?? cv.INTER_LINEAR,
@@ -17,9 +47,8 @@ export class ScanImage {
 
   /**
    * Initialize OpenCV (if needed)
-   * @returns {Promise<void>}
    */
-  async initialize() {
+  async initialize(): Promise<void> {
     if (this.initialized) return;
     // OpenCV.js is already loaded via import
     this.initialized = true;
@@ -27,11 +56,11 @@ export class ScanImage {
 
   /**
    * Scan a canvas for QR codes using OpenCV QRCodeDetector
-   * @param {HTMLCanvasElement} canvas - The canvas element containing the image
-   * @param {number} scale - The scale factor (1 = original size)
-   * @returns {Promise<ScanResult>} - Scan result with codes or error
+   * @param canvas - The canvas element containing the image
+   * @param scale - The scale factor (1 = original size)
+   * @returns Scan result with codes or error
    */
-  async scan(canvas, scale = 1) {
+  async scan(canvas: HTMLCanvasElement, scale: number = 1): Promise<ScanResult> {
     try {
       await this.initialize();
 
@@ -43,7 +72,7 @@ export class ScanImage {
       let srcMat = cv.imread(canvas);
 
       // Apply scaling if needed (using cv.resize for better quality)
-      let processedMat;
+      let processedMat: cv.Mat;
       if (scale !== 1) {
         const newWidth = Math.round(srcMat.cols * scale);
         const newHeight = Math.round(srcMat.rows * scale);
@@ -86,7 +115,12 @@ export class ScanImage {
       // Extract decoded text from Mat
       let decodedString = "";
       if (decodedText.rows > 0) {
-        const dataPtr = cv.matFromArray(decodedText.rows, decodedText.cols, decodedText.type(), decodedText.data32F);
+        const dataPtr = cv.matFromArray(
+          decodedText.rows,
+          decodedText.cols,
+          decodedText.type(),
+          decodedText.data32F
+        );
         const text = cv.matToString(dataPtr);
         decodedString = text || "";
         dataPtr.delete();
@@ -96,7 +130,7 @@ export class ScanImage {
       decodedText.delete();
 
       // Return as array with single QR code result
-      const codes =
+      const codes: QRCode[] =
         decodedString && decodedString.length > 0
           ? [
               {

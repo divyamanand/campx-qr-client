@@ -1,13 +1,80 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min?url";
-import { ScanImage } from "./ScanImage";
+import { ScanImage, QRCode, ScanResult } from "./ScanImage";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 /**
+ * PDFManager configuration options
+ */
+export interface PDFManagerConfig {
+  initialScale?: number;
+  maxScale?: number;
+  minScale?: number;
+}
+
+/**
+ * Page processing result
+ */
+export interface PageResult {
+  success: boolean;
+  codes: QRCode[];
+  scale: number;
+  attempts: number;
+  error?: string;
+}
+
+/**
+ * File processing result
+ */
+export interface FileResult {
+  fileName: string;
+  totalPages: number;
+  successCount: number;
+  failureCount: number;
+  pages: Record<number, PageResult>;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Processing summary statistics
+ */
+export interface ProcessingSummary {
+  totalFiles: number;
+  totalPages: number;
+  successfulPages: number;
+  failedPages: number;
+  totalCodes: number;
+  successRate: string | number;
+}
+
+/**
+ * Page completion callback
+ */
+export type OnPageComplete = (progress: {
+  fileName: string;
+  pageNumber: number;
+  totalPages: number;
+  result: PageResult | { success: false; error: string };
+}) => void;
+
+/**
+ * Log callback
+ */
+export type OnLog = (logEntry: {
+  type: string;
+  message: string;
+  fileName?: string;
+  pageNumber?: number;
+  attempt?: number;
+  [key: string]: unknown;
+}) => void;
+
+/**
  * Default configuration for PDFManager
  */
-const DEFAULT_CONFIG = {
+const DEFAULT_CONFIG: Required<PDFManagerConfig> = {
   initialScale: 1, // Base scale for rendering (1.0 = 100%)
   maxScale: 3, // Maximum scale multiplier to try (e.g., 1 * 3 = 3.0x)
   minScale: 0.5, // Minimum scale multiplier to try
@@ -23,13 +90,16 @@ const DEFAULT_CONFIG = {
  * - Track results per file/page
  */
 export class PDFManager {
-  /**
-   * @param {Object} config - Configuration options
-   * @param {number} config.initialScale - Starting render scale (default: 1)
-   * @param {number} config.maxScale - Maximum scale multiplier (default: 3)
-   * @param {number} config.minScale - Minimum scale multiplier (default: 0.5)
-   */
-  constructor(config = {}) {
+  private config: Required<PDFManagerConfig>;
+  private scanner: ScanImage;
+  private allPdfFiles: Record<
+    string,
+    {
+      pages: Record<number, PageResult>;
+    }
+  >;
+
+  constructor(config: PDFManagerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.scanner = new ScanImage();
 
@@ -39,10 +109,10 @@ export class PDFManager {
 
   /**
    * Load a PDF document from a File
-   * @param {File} pdfFile - The PDF file to load
-   * @returns {Promise<PDFDocumentProxy>} - The loaded PDF document
    */
-  async loadDocument(pdfFile) {
+  async loadDocument(
+    pdfFile: File
+  ): Promise<pdfjsLib.PDFDocumentProxy> {
     const arrayBuffer = await pdfFile.arrayBuffer();
     return pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   }
@@ -50,10 +120,9 @@ export class PDFManager {
   /**
    * Generate scale sequence for retry attempts
    * Uses geometric progression: initialScale * 1, * 1.5, * 2, * 2.5, * 3
-   * @returns {number[]} Array of scale multipliers to try
    */
-  generateScaleSequence() {
-    const scales = [this.config.initialScale];
+  generateScaleSequence(): number[] {
+    const scales: number[] = [this.config.initialScale];
     const { maxScale, initialScale } = this.config;
 
     // Add increasing scales up to maxScale
@@ -69,15 +138,19 @@ export class PDFManager {
 
   /**
    * Render a PDF page to canvas at a given scale
-   * @param {PDFPageProxy} page - The PDF page to render
-   * @param {number} renderScale - Scale factor for rendering
-   * @returns {Promise<HTMLCanvasElement>} - Canvas element with rendered page
    */
-  async renderPageToCanvas(page, renderScale) {
+  async renderPageToCanvas(
+    page: pdfjsLib.PDFPageProxy,
+    renderScale: number
+  ): Promise<HTMLCanvasElement> {
     const viewport = page.getViewport({ scale: renderScale });
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new Error("Failed to get canvas context");
+    }
 
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -92,17 +165,17 @@ export class PDFManager {
 
   /**
    * Process a single PDF page, trying multiple scales with OpenCV
-   * @param {PDFPageProxy} page - PDF page to process
-   * @param {number} pageNumber - Page number
-   * @param {string} fileName - File name for tracking
-   * @param {Function} onLog - Optional callback for logging events
-   * @returns {Promise<PageResult>}
    */
-  async processPage(page, pageNumber, fileName, onLog = null) {
+  async processPage(
+    page: pdfjsLib.PDFPageProxy,
+    pageNumber: number,
+    fileName: string,
+    onLog: OnLog | null = null
+  ): Promise<PageResult> {
     const scaleSequence = this.generateScaleSequence();
     let attemptCount = 0;
 
-    const log = (type, message, extra = {}) => {
+    const log = (type: string, message: string, extra: Record<string, unknown> = {}): void => {
       if (onLog) {
         onLog({
           type,
@@ -132,8 +205,8 @@ export class PDFManager {
         const canvas = await this.renderPageToCanvas(page, scale);
         log("info", `Rendered page to canvas: ${canvas.width}x${canvas.height}px`);
 
-        // Scan canvas with OpenCV (OpenCV handles scaling internally)
-        const result = await this.scanner.scan(canvas, 1.0); // Pass 1.0 since we already scaled during render
+        // Scan canvas with OpenCV
+        const result = await this.scanner.scan(canvas, 1.0);
 
         // Clean up canvas
         canvas.width = 0;
@@ -155,13 +228,21 @@ export class PDFManager {
           log("info", `No QR codes found at scale ${scale}`);
         }
       } catch (err) {
-        log("error", `Error at scale ${scale}: ${err.message}`);
-        console.error(`Error processing page ${pageNumber} at scale ${scale}:`, err);
+        const errorMessage =
+          err instanceof Error ? err.message : String(err);
+        log("error", `Error at scale ${scale}: ${errorMessage}`);
+        console.error(
+          `Error processing page ${pageNumber} at scale ${scale}:`,
+          err
+        );
       }
     }
 
     // All scales exhausted without finding codes
-    log("error", `All ${attemptCount} attempts failed - no QR codes found`);
+    log(
+      "error",
+      `All ${attemptCount} attempts failed - no QR codes found`
+    );
     return {
       success: false,
       codes: [],
@@ -173,12 +254,12 @@ export class PDFManager {
 
   /**
    * Process an entire PDF file (sequential page-by-page processing)
-   * @param {File} pdfFile - The PDF file to process
-   * @param {Function} onPageComplete - Optional callback for progress updates
-   * @param {Function} onLog - Optional callback for logging events
-   * @returns {Promise<FileResult>}
    */
-  async processFile(pdfFile, onPageComplete = null, onLog = null) {
+  async processFile(
+    pdfFile: File,
+    onPageComplete: OnPageComplete | null = null,
+    onLog: OnLog | null = null
+  ): Promise<FileResult> {
     const fileName = pdfFile.name;
 
     // Initialize file entry
@@ -186,7 +267,11 @@ export class PDFManager {
       pages: {},
     };
 
-    const log = (type, message, extra = {}) => {
+    const log = (
+      type: string,
+      message: string,
+      extra: Record<string, unknown> = {}
+    ): void => {
       if (onLog) {
         onLog({
           type,
@@ -210,7 +295,12 @@ export class PDFManager {
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
         try {
           const page = await pdf.getPage(pageNum);
-          const pageResult = await this.processPage(page, pageNum, fileName, onLog);
+          const pageResult = await this.processPage(
+            page,
+            pageNum,
+            fileName,
+            onLog
+          );
 
           // Store result
           this.allPdfFiles[fileName].pages[pageNum] = {
@@ -218,7 +308,7 @@ export class PDFManager {
             scale: pageResult.scale,
             attempts: pageResult.attempts,
             success: pageResult.success,
-            error: pageResult.error || null,
+            error: pageResult.error || undefined,
           };
 
           if (pageResult.success) {
@@ -238,14 +328,18 @@ export class PDFManager {
           }
         } catch (pageErr) {
           failureCount++;
-          log("error", `Page ${pageNum} failed: ${pageErr.message}`);
+          const errorMessage =
+            pageErr instanceof Error
+              ? pageErr.message
+              : String(pageErr);
+          log("error", `Page ${pageNum} failed: ${errorMessage}`);
 
           this.allPdfFiles[fileName].pages[pageNum] = {
             codes: [],
             scale: 0,
             attempts: 0,
             success: false,
-            error: pageErr.message,
+            error: errorMessage,
           };
 
           if (onPageComplete) {
@@ -253,13 +347,16 @@ export class PDFManager {
               fileName,
               pageNumber: pageNum,
               totalPages,
-              result: { success: false, error: pageErr.message },
+              result: { success: false, error: errorMessage },
             });
           }
         }
       }
 
-      log("complete", `Processing complete: ${successCount}/${totalPages} successful`);
+      log(
+        "complete",
+        `Processing complete: ${successCount}/${totalPages} successful`
+      );
       return {
         fileName,
         totalPages,
@@ -269,7 +366,9 @@ export class PDFManager {
         success: failureCount === 0,
       };
     } catch (err) {
-      log("error", `Failed to load PDF: ${err.message}`);
+      const errorMessage =
+        err instanceof Error ? err.message : String(err);
+      log("error", `Failed to load PDF: ${errorMessage}`);
       return {
         fileName,
         totalPages: 0,
@@ -277,21 +376,24 @@ export class PDFManager {
         failureCount: 0,
         pages: {},
         success: false,
-        error: err.message,
+        error: errorMessage,
       };
     }
   }
 
   /**
    * Process multiple PDF files sequentially
-   * @param {File[]} pdfFiles - Array of PDF files to process
-   * @param {Function} onFileComplete - Optional callback when a file completes
-   * @param {Function} onPageComplete - Optional callback for page progress
-   * @returns {Promise<Object>} - All results
    */
-  async processFiles(pdfFiles, onFileComplete = null, onPageComplete = null) {
+  async processFiles(
+    pdfFiles: File[],
+    onFileComplete: ((result: FileResult) => void) | null = null,
+    onPageComplete: OnPageComplete | null = null
+  ): Promise<Record<string, { pages: Record<number, PageResult> }>> {
     for (const pdfFile of pdfFiles) {
-      const fileResult = await this.processFile(pdfFile, onPageComplete);
+      const fileResult = await this.processFile(
+        pdfFile,
+        onPageComplete
+      );
 
       if (onFileComplete) {
         onFileComplete(fileResult);
@@ -303,24 +405,27 @@ export class PDFManager {
 
   /**
    * Get all scan results
-   * @returns {Object} - The allPdfFiles map with all results
    */
-  getAllResults() {
+  getAllResults(): Record<
+    string,
+    {
+      pages: Record<number, PageResult>;
+    }
+  > {
     return this.allPdfFiles;
   }
 
   /**
    * Clear all stored results
    */
-  clearResults() {
+  clearResults(): void {
     this.allPdfFiles = {};
   }
 
   /**
    * Get summary statistics across all files
-   * @returns {Object} - Summary of processing results
    */
-  getSummary() {
+  getSummary(): ProcessingSummary {
     let totalFiles = 0;
     let totalPages = 0;
     let successfulPages = 0;
@@ -350,12 +455,19 @@ export class PDFManager {
       successfulPages,
       failedPages,
       totalCodes,
-      successRate: totalPages > 0 ? ((successfulPages / totalPages) * 100).toFixed(1) : 0,
+      successRate:
+        totalPages > 0
+          ? ((successfulPages / totalPages) * 100).toFixed(1)
+          : 0,
     };
   }
 }
 
-// Export a factory function for convenience
-export function createPDFManager(config = {}) {
+/**
+ * Export a factory function for convenience
+ */
+export function createPDFManager(
+  config: PDFManagerConfig = {}
+): PDFManager {
   return new PDFManager(config);
 }

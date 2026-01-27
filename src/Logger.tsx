@@ -1,23 +1,46 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, FC, ReactNode, MouseEvent } from "react";
+
+/**
+ * Log entry structure
+ */
+export interface LogEntry {
+  timestamp: number;
+  type: string;
+  message: string;
+  fileName?: string | null;
+  pageNumber?: number | null;
+  scale?: number | null;
+  rotated?: boolean;
+  attemptCount?: number | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Logger Component Props
+ */
+interface LoggerProps {
+  logs: LogEntry[];
+  maxHeight?: number;
+}
 
 /**
  * Logger Component - Displays live processing status
  * Shows: fileName, pageNumber, status, attemptCount, rotation, scale changes
  * Expandable/collapsible with optional auto-scroll and jump-to-end
  */
-export function Logger({ logs, maxHeight = 300 }) {
+export const Logger: FC<LoggerProps> = ({ logs, maxHeight = 300 }) => {
   const [expanded, setExpanded] = useState(false);
   const [autoScroll, setAutoScroll] = useState(false);
-  const logEndRef = useRef(null);
-  const logBodyRef = useRef(null);
+  const logBodyRef = useRef<HTMLDivElement>(null);
 
-  const toggleExpand = () => setExpanded(!expanded);
-  const toggleAutoScroll = (e) => {
+  const toggleExpand = (): void => setExpanded(!expanded);
+
+  const toggleAutoScroll = (e: MouseEvent<HTMLButtonElement>): void => {
     e.stopPropagation();
     setAutoScroll(!autoScroll);
   };
 
-  const scrollToEnd = (e) => {
+  const scrollToEnd = (e: MouseEvent<HTMLButtonElement>): void => {
     e.stopPropagation();
     if (logBodyRef.current) {
       logBodyRef.current.scrollTop = logBodyRef.current.scrollHeight;
@@ -38,12 +61,21 @@ export function Logger({ logs, maxHeight = 300 }) {
           <span className="logger-title">Processing Log</span>
           <div className="logger-header-right">
             <span className="logger-count">0 entries</span>
-            <span className={`logger-chevron ${expanded ? "rotate" : ""}`}>&#9660;</span>
+            <span
+              className={`logger-chevron ${expanded ? "rotate" : ""}`}
+            >
+              &#9660;
+            </span>
           </div>
         </div>
         {expanded && (
-          <div className="logger-body empty" style={{ maxHeight }}>
-            <span className="logger-empty-msg">No activity yet. Upload PDFs to begin scanning.</span>
+          <div
+            className="logger-body empty"
+            style={{ maxHeight: `${maxHeight}px` }}
+          >
+            <span className="logger-empty-msg">
+              No activity yet. Upload PDFs to begin scanning.
+            </span>
           </div>
         )}
       </div>
@@ -51,13 +83,18 @@ export function Logger({ logs, maxHeight = 300 }) {
   }
 
   return (
-    <div className={`logger-container ${expanded ? "expanded" : ""}`}>
+    <div
+      className={`logger-container ${expanded ? "expanded" : ""}`}
+    >
       <div className="logger-header" onClick={toggleExpand}>
         <span className="logger-title">Processing Log</span>
         <div className="logger-header-right">
           <span className="logger-count">{logs.length} entries</span>
           {expanded && (
-            <div className="logger-controls" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="logger-controls"
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
                 className={`logger-btn ${autoScroll ? "active" : ""}`}
                 onClick={toggleAutoScroll}
@@ -74,23 +111,38 @@ export function Logger({ logs, maxHeight = 300 }) {
               </button>
             </div>
           )}
-          <span className={`logger-chevron ${expanded ? "rotate" : ""}`}>&#9660;</span>
+          <span
+            className={`logger-chevron ${expanded ? "rotate" : ""}`}
+          >
+            &#9660;
+          </span>
         </div>
       </div>
       {expanded && (
-        <div className="logger-body" style={{ maxHeight }} ref={logBodyRef}>
+        <div
+          className="logger-body"
+          style={{ maxHeight: `${maxHeight}px` }}
+          ref={logBodyRef}
+        >
           {logs.map((log, index) => (
-            <LogEntry key={index} log={log} index={index} />
+            <LogEntryComponent key={index} log={log} index={index} />
           ))}
-          <div ref={logEndRef} />
         </div>
       )}
     </div>
   );
+};
+
+/**
+ * Individual log entry component
+ */
+interface LogEntryComponentProps {
+  log: LogEntry;
+  index: number;
 }
 
-function LogEntry({ log, index }) {
-  const getStatusClass = (type) => {
+const LogEntryComponent: FC<LogEntryComponentProps> = ({ log }) => {
+  const getStatusClass = (type: string): string => {
     switch (type) {
       case "success":
         return "log-success";
@@ -107,7 +159,7 @@ function LogEntry({ log, index }) {
     }
   };
 
-  const getStatusIcon = (type) => {
+  const getStatusIcon = (type: string): string => {
     switch (type) {
       case "success":
         return "\u2713";
@@ -126,7 +178,7 @@ function LogEntry({ log, index }) {
     }
   };
 
-  const formatTime = (timestamp) => {
+  const formatTime = (timestamp: number): string => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString("en-US", {
       hour12: false,
@@ -141,42 +193,51 @@ function LogEntry({ log, index }) {
       <span className="log-time">{formatTime(log.timestamp)}</span>
       <span className="log-icon">{getStatusIcon(log.type)}</span>
       <span className="log-message">
-        {log.fileName && <span className="log-file">{log.fileName}</span>}
+        {log.fileName && (
+          <span className="log-file">{log.fileName}</span>
+        )}
         {log.pageNumber && (
           <span className="log-page">Page {log.pageNumber}</span>
         )}
         <span className="log-text">{log.message}</span>
-        {log.scale && <span className="log-badge log-scale">@{log.scale}x</span>}
-        {log.rotated && <span className="log-badge log-rotated">Rotated</span>}
+        {log.scale && (
+          <span className="log-badge log-scale">@{log.scale}x</span>
+        )}
+        {log.rotated && (
+          <span className="log-badge log-rotated">Rotated</span>
+        )}
         {log.attemptCount && (
-          <span className="log-badge log-attempt">Attempt {log.attemptCount}</span>
+          <span className="log-badge log-attempt">
+            Attempt {log.attemptCount}
+          </span>
         )}
       </span>
     </div>
   );
-}
+};
 
 /**
  * Creates a log entry object
  */
-export function createLogEntry({
-  type = "info",
-  message,
-  fileName = null,
-  pageNumber = null,
-  scale = null,
-  rotated = false,
-  attemptCount = null,
-}) {
+export function createLogEntry(data: {
+  type?: string;
+  message: string;
+  fileName?: string | null;
+  pageNumber?: number | null;
+  scale?: number | null;
+  rotated?: boolean;
+  attemptCount?: number | null;
+  [key: string]: unknown;
+}): LogEntry {
   return {
     timestamp: Date.now(),
-    type,
-    message,
-    fileName,
-    pageNumber,
-    scale,
-    rotated,
-    attemptCount,
+    type: data.type || "info",
+    message: data.message,
+    fileName: data.fileName || null,
+    pageNumber: data.pageNumber || null,
+    scale: data.scale || null,
+    rotated: data.rotated || false,
+    attemptCount: data.attemptCount || null,
   };
 }
 
