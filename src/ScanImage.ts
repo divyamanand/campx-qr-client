@@ -62,13 +62,25 @@ export class ScanImage {
         this.interpolation = this.options.interpolation ?? cv.INTER_LINEAR;
       }
 
-      // Initialize detectors
+      // Initialize QR code detector (always available)
       this.qrDetector = new cv.QRCodeDetector();
-      this.barcodeDetector = new cv.barcode_BarcodeDetector();
+
+      // Try to initialize barcode detector (may not be available in all OpenCV builds)
+      try {
+        if (cv.barcode_BarcodeDetector) {
+          this.barcodeDetector = new cv.barcode_BarcodeDetector();
+        } else {
+          console.warn("barcode_BarcodeDetector not available in this OpenCV.js build");
+          this.barcodeDetector = null;
+        }
+      } catch (barcodeErr) {
+        console.warn("Failed to initialize barcode detector:", barcodeErr);
+        this.barcodeDetector = null;
+      }
 
       this.initialized = true;
     } catch (err) {
-      console.error("Failed to initialize detectors:", err);
+      console.error("Failed to initialize QR detector:", err);
       throw err;
     }
   }
@@ -123,6 +135,11 @@ export class ScanImage {
    */
   private detectBarcodes(grayMat: cv.Mat): QRCode[] {
     const codes: QRCode[] = [];
+
+    // Barcode detector may not be available in all OpenCV builds
+    if (!this.barcodeDetector) {
+      return codes;
+    }
 
     try {
       // Detect barcodes
@@ -222,11 +239,19 @@ export class ScanImage {
    */
   destroy(): void {
     if (this.qrDetector) {
-      this.qrDetector.delete();
+      try {
+        this.qrDetector.delete();
+      } catch (err) {
+        console.error("Error deleting QR detector:", err);
+      }
       this.qrDetector = null;
     }
     if (this.barcodeDetector) {
-      this.barcodeDetector.delete();
+      try {
+        this.barcodeDetector.delete();
+      } catch (err) {
+        console.error("Error deleting barcode detector:", err);
+      }
       this.barcodeDetector = null;
     }
     this.initialized = false;

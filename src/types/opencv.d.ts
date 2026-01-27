@@ -33,7 +33,7 @@ declare module "@techstark/opencv-js" {
     delete(): void;
   }
 
-  // Barcode Detector
+  // Barcode Detector (may not be available in all OpenCV builds)
   class barcode_BarcodeDetector {
     constructor();
     detect(img: Mat): {
