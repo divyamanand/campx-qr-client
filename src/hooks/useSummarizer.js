@@ -64,7 +64,10 @@ export const useSummarizer = (logsDirectory) => {
 
   /**
    * Read and summarize logs from LogWriter
-   * @returns {Promise<Array>} Array of formatted log summaries
+   * Also verifies logs and identifies pages that need retry
+   * @returns {Promise<Object>} Object containing:
+   *   - summary: Array of formatted log summaries
+   *   - verification: { filesToRetry, bestCounts }
    * @throws {Error} If logsDirectory is not set
    */
   const summarizeLogs = useCallback(async () => {
@@ -78,7 +81,7 @@ export const useSummarizer = (logsDirectory) => {
 
       if (!logsData || Object.keys(logsData).length === 0) {
         console.warn("No logs found");
-        return [];
+        return { summary: [], verification: { filesToRetry: {}, bestCounts: {} } };
       }
 
       // Transform the logs into summary format
@@ -86,10 +89,18 @@ export const useSummarizer = (logsDirectory) => {
         return formatLogSummary(fileName, fileLog);
       });
 
+      // Verify logs and get pages that need retry
+      const verification = await LogWriter.verifyAndGetRetryPages(logsDirectory);
+
       // Display the summary in table format
       console.table(summary);
 
-      return summary;
+      // Log retry information if any pages need retry
+      if (Object.keys(verification.filesToRetry).length > 0) {
+        console.warn("Files with pages requiring retry:", verification.filesToRetry);
+      }
+
+      return { summary, verification };
     } catch (error) {
       console.error("Error summarizing logs:", error);
       throw error;

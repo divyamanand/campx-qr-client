@@ -181,6 +181,116 @@ class LogWriter {
       throw new Error(`Failed to append file results: ${error.message}`);
     }
   }
+
+  /**
+   * Verification function to identify pages that need to be retried
+   * 
+   * This function analyzes all processed files to find the maximum (best) count
+   * of codes per page number across all files. Then identifies files where the
+   * count is less than the best count, indicating potential processing failures.
+   * 
+   * @async
+   * @param {FileSystemDirectoryHandle} dirHandle - Handle to the directory containing logs.json
+   * @returns {Promise<Object>} Object with structure:
+   *   {
+   *     filesToRetry: { fileName: [pageNumbers] },
+   *     bestCounts: { pageNumber: { QRCode: count, Code128: count } }
+   *   }
+   * @throws {Error} If reading logs fails
+   * 
+   * @example
+   * const verification = await LogWriter.verifyAndGetRetryPages(dirHandle);
+   * // Returns: { 
+   * //   filesToRetry: { 'doc1.pdf': [1, 3], 'doc2.pdf': [2] },
+   * //   bestCounts: { '1': { QRCode: 2, Code128: 1 }, ... }
+   * // }
+   */
+  static async verifyAndGetRetryPages(dirHandle) {
+    try {
+      // Step 1: Read logs
+      const logs = await LogWriter.readLogsFile(dirHandle);
+
+      if (!logs || Object.keys(logs).length === 0) {
+        return { filesToRetry: {}, bestCounts: {} };
+      }
+
+      // Step 2: Create bestCount dictionary to track maximum codes per page
+      const bestCounts = {};
+
+      // First pass: Find the maximum count for each page number
+      Object.entries(logs).forEach(([fileName, fileLog]) => {
+        Object.entries(fileLog).forEach(([pageNumber, pageData]) => {
+          // Initialize page in bestCounts if not exists
+          if (!bestCounts[pageNumber]) {
+            bestCounts[pageNumber] = { QRCode: 0, Code128: 0 };
+          }
+
+          // Count codes by type for this page
+          let qrCount = 0;
+          let code128Count = 0;
+
+          if (pageData.codes && Array.isArray(pageData.codes)) {
+            pageData.codes.forEach((codeObj) => {
+              if (codeObj.QRCode) qrCount++;
+              if (codeObj.Code128) code128Count++;
+            });
+          }
+
+          // Update best counts (maximum found so far)
+          bestCounts[pageNumber].QRCode = Math.max(
+            bestCounts[pageNumber].QRCode,
+            qrCount
+          );
+          bestCounts[pageNumber].Code128 = Math.max(
+            bestCounts[pageNumber].Code128,
+            code128Count
+          );
+        });
+      });
+
+      // Step 3: Second pass - identify pages that need retry
+      const filesToRetry = {};
+
+      Object.entries(logs).forEach(([fileName, fileLog]) => {
+        Object.entries(fileLog).forEach(([pageNumber, pageData]) => {
+          // Count codes by type for this page
+          let qrCount = 0;
+          let code128Count = 0;
+
+          if (pageData.codes && Array.isArray(pageData.codes)) {
+            pageData.codes.forEach((codeObj) => {
+              if (codeObj.QRCode) qrCount++;
+              if (codeObj.Code128) code128Count++;
+            });
+          }
+
+          // Check if counts mismatch the best counts
+          const needsRetry =
+            qrCount < bestCounts[pageNumber].QRCode ||
+            code128Count < bestCounts[pageNumber].Code128;
+
+          if (needsRetry) {
+            if (!filesToRetry[fileName]) {
+              filesToRetry[fileName] = [];
+            }
+            filesToRetry[fileName].push(parseInt(pageNumber));
+          }
+        });
+      });
+
+      // Sort page numbers for each file
+      Object.keys(filesToRetry).forEach((fileName) => {
+        filesToRetry[fileName].sort((a, b) => a - b);
+      });
+
+      return {
+        filesToRetry,
+        bestCounts,
+      };
+    } catch (error) {
+      throw new Error(`Failed to verify and get retry pages: ${error.message}`);
+    }
+  }
 }
 
 export { LogWriter };

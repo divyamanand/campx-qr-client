@@ -11,6 +11,7 @@ import "./Summary.css"
 const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
   const { summarizeLogs, formatLogSummary } = useSummarizer(logsDirectory)
   const [summaryData, setSummaryData] = useState([])
+  const [verificationData, setVerificationData] = useState({ filesToRetry: {}, bestCounts: {} })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -19,8 +20,9 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
     const loadSummary = async () => {
       try {
         setLoading(true)
-        const data = await summarizeLogs()
-        setSummaryData(data)
+        const { summary, verification } = await summarizeLogs()
+        setSummaryData(summary)
+        setVerificationData(verification)
       } catch (err) {
         setError(err.message)
         console.error("Failed to load summary:", err)
@@ -64,6 +66,13 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
   const filesProcessed = summaryData.length
   const successCount = results.filter((r) => r.success).length
   const failedCount = results.filter((r) => !r.success).length
+  
+  // Calculate retry statistics
+  const filesToRetryCount = Object.keys(verificationData.filesToRetry).length
+  const totalPagesToRetry = Object.values(verificationData.filesToRetry).reduce(
+    (sum, pages) => sum + pages.length,
+    0
+  )
 
   return (
     <div className="summary-container">
@@ -132,6 +141,39 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
           </div>
         </div>
       </div>
+
+      {/* Verification/Retry Section */}
+      {filesToRetryCount > 0 && (
+        <div className="summary-retry-section">
+          <h3>⚠️ Pages Requiring Retry</h3>
+          <p className="retry-description">
+            {filesToRetryCount} file{filesToRetryCount > 1 ? 's' : ''} with {totalPagesToRetry} page
+            {totalPagesToRetry > 1 ? 's' : ''} need to be reprocessed due to code count mismatches.
+          </p>
+          <div className="retry-list">
+            {Object.entries(verificationData.filesToRetry).map(([fileName, pages]) => (
+              <div key={fileName} className="retry-item">
+                <div className="retry-filename">
+                  <span className="retry-icon">🔄</span>
+                  {fileName}
+                </div>
+                <div className="retry-pages">
+                  Pages: {pages.join(", ")}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {filesToRetryCount === 0 && (
+        <div className="summary-retry-section success">
+          <h3>✅ Verification Complete</h3>
+          <p className="retry-description">
+            All pages have consistent code counts. No retries required!
+          </p>
+        </div>
+      )}
 
       {/* Detailed Results Table */}
       {summaryData.length > 0 && (

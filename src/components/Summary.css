@@ -122,6 +122,71 @@
   gap: 1rem;
 }
 
+/* Retry Section */
+.summary-retry-section {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border: 1px solid #fbbf24;
+  border-left: 4px solid #f59e0b;
+}
+
+.summary-retry-section.success {
+  border-color: #86efac;
+  border-left-color: #10b981;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+}
+
+.summary-retry-section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.retry-description {
+  color: #64748b;
+  margin: 0 0 1.5rem 0;
+  font-size: 0.9rem;
+}
+
+.retry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.retry-item {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.retry-filename {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #92400e;
+  font-size: 0.95rem;
+}
+
+.retry-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.retry-pages {
+  color: #78350f;
+  font-size: 0.85rem;
+  padding-left: 1.7rem;
+  font-family: 'Courier New', monospace;
+}
+
 .code-stat {
   text-align: center;
   padding: 1.5rem;
