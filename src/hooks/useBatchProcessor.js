@@ -7,6 +7,7 @@ import { LogWriter } from "../LogWriter";
  * 
  * Single Responsibility: Manage batch processing state and logic
  * Separates processing logic from UI components (SRP)
+ * Last updated: Force cache refresh
  */
 export const useBatchProcessor = (batchSize = 5) => {
   // File processing state

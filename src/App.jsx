@@ -1,6 +1,7 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { useBatchProcessor } from "./hooks/useBatchProcessor"
 import { formatTime } from "./utils/timeFormatter"
+import Summary from "./components/Summary"
 import "./App.css"
 
 /**
@@ -11,6 +12,7 @@ import "./App.css"
  */
 const App = () => {
   const fileInputRef = useRef(null)
+  const [showSummary, setShowSummary] = useState(false)
 
   // Use custom hook for batch processing logic (SRP - separation of concerns)
   const {
@@ -230,51 +232,79 @@ const App = () => {
 
       {/* Results Grid */}
       {results.length > 0 && !processing && (
-        <div>
-          <h2 style={styles.resultsTitle}>Batch Results</h2>
-          <div className="cards-container">
-            {results.map((result, index) => (
-              <div
-                key={index}
-                className={`card ${
-                  result.success ? "completed" : "error"
-                }`}
-              >
-                <div className="card-header">
-                  <div className="header-top">
-                    <div className="filename">{result.fileName}</div>
-                    <div className="status-indicator">
-                      {result.success ? (
-                        <span className="icon-success">✓</span>
-                      ) : (
-                        <span className="icon-error">✕</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="meta-info">
-                    <span>
-                      {result.success
-                        ? `${result.totalPages} pages`
-                        : "Failed"}
-                    </span>
-                  </div>
-                </div>
-                {!result.success && result.error && (
-                  <div
-                    style={{
-                      padding: "1rem",
-                      background: "#fef2f2",
-                      color: "#dc2626",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    Error: {result.error}
-                  </div>
-                )}
+        <>
+          {!showSummary ? (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                <h2 style={styles.resultsTitle}>Batch Results</h2>
+                <button
+                  onClick={() => setShowSummary(true)}
+                  style={{
+                    padding: "0.75rem 1.5rem",
+                    backgroundColor: "#6366f1",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "0.95rem",
+                    fontWeight: "600",
+                  }}
+                >
+                  📊 View Summary
+                </button>
               </div>
-            ))}
-          </div>
-        </div>
+              <div className="cards-container">
+                {results.map((result, index) => (
+                  <div
+                    key={index}
+                    className={`card ${
+                      result.success ? "completed" : "error"
+                    }`}
+                  >
+                    <div className="card-header">
+                      <div className="header-top">
+                        <div className="filename">{result.fileName}</div>
+                        <div className="status-indicator">
+                          {result.success ? (
+                            <span className="icon-success">✓</span>
+                          ) : (
+                            <span className="icon-error">✕</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="meta-info">
+                        <span>
+                          {result.success
+                            ? `${result.totalPages} pages`
+                            : "Failed"}
+                        </span>
+                      </div>
+                    </div>
+                    {!result.success && result.error && (
+                      <div
+                        style={{
+                          padding: "1rem",
+                          background: "#fef2f2",
+                          color: "#dc2626",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        Error: {result.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <Summary
+              results={results}
+              elapsedTime={elapsedTime}
+              logsDirectory={logsDirectory}
+              onClose={() => setShowSummary(false)}
+            />
+          )}
+        </>
       )}
 
       {/* Empty state */}

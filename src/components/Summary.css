@@ -1,0 +1,377 @@
+.summary-container {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-top: 2rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 1.5rem;
+}
+
+.summary-title-section h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.summary-subtitle {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.summary-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 0.5rem;
+  transition: color 0.2s ease;
+}
+
+.summary-close-btn:hover {
+  color: #0f172a;
+}
+
+/* Stats Grid */
+.summary-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.summary-stat-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.3s ease;
+  border-left: 4px solid #6366f1;
+}
+
+.summary-stat-card:hover {
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+  transform: translateY(-2px);
+}
+
+.summary-stat-card.success {
+  border-left-color: #10b981;
+}
+
+.summary-stat-card.error {
+  border-left-color: #ef4444;
+}
+
+.stat-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+/* Codes Section */
+.summary-codes-section {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border: 1px solid #e2e8f0;
+}
+
+.summary-codes-section h3 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.summary-codes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.code-stat {
+  text-align: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f0f4ff 0%, #f3e8ff 100%);
+  border-radius: 8px;
+  border: 1px solid #ddd6fe;
+}
+
+.code-stat.qr {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: #bbf7d0;
+}
+
+.code-stat.barcode {
+  background: linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%);
+  border-color: #fcd34d;
+}
+
+.code-count {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #6366f1;
+}
+
+.code-stat.qr .code-count {
+  color: #10b981;
+}
+
+.code-stat.barcode .code-count {
+  color: #f59e0b;
+}
+
+.code-label {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+/* Details Section */
+.summary-details-section {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border: 1px solid #e2e8f0;
+}
+
+.summary-details-section h3 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.summary-table-wrapper {
+  overflow-x: auto;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.summary-table thead {
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.summary-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.summary-table th.text-center {
+  text-align: center;
+}
+
+.summary-table-row {
+  border-bottom: 1px solid #e2e8f0;
+  transition: background-color 0.2s ease;
+}
+
+.summary-table-row:hover {
+  background-color: #f8fafc;
+}
+
+.summary-table td {
+  padding: 0.75rem 1rem;
+  color: #1e293b;
+}
+
+.summary-table td.text-center {
+  text-align: center;
+}
+
+.filename-cell {
+  font-weight: 600;
+  color: #0f172a;
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.qr-badge {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.barcode-badge {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+/* Actions */
+.summary-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.summary-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.summary-btn-copy {
+  background-color: #6366f1;
+  color: white;
+}
+
+.summary-btn-copy:hover {
+  background-color: #4f46e5;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.summary-btn-close {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.summary-btn-close:hover {
+  background-color: #cbd5e1;
+  transform: translateY(-2px);
+}
+
+/* Loading State */
+.summary-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.summary-loading p {
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Error State */
+.summary-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.summary-error h3 {
+  color: #dc2626;
+  margin: 0 0 0.5rem 0;
+}
+
+.summary-error p {
+  color: #991b1b;
+  margin: 0 0 1.5rem 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .summary-container {
+    padding: 1.5rem;
+  }
+
+  .summary-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .summary-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .summary-codes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-actions {
+    flex-direction: column;
+  }
+
+  .summary-btn {
+    width: 100%;
+  }
+
+  .summary-table {
+    font-size: 0.8rem;
+  }
+
+  .summary-table th,
+  .summary-table td {
+    padding: 0.5rem;
+  }
+}
