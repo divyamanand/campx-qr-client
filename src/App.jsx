@@ -1,5 +1,7 @@
 import { useRef, useState } from "react"
 import { useBatchProcessor } from "./hooks/useBatchProcessor"
+import { useTimer } from "./hooks/useTimer"
+import { useLogsDirectory } from "./hooks/useLogsDirectory"
 import { formatTime } from "./utils/timeFormatter"
 import Summary from "./components/Summary"
 import "./App.css"
@@ -14,6 +16,10 @@ const App = () => {
   const fileInputRef = useRef(null)
   const [showSummary, setShowSummary] = useState(false)
 
+  // Separate hooks for different responsibilities (SRP)
+  const { logsDirectory, selectLogsDirectory } = useLogsDirectory()
+  const { elapsedTime, startTimer, stopTimer, resetTimer } = useTimer()
+
   // Use custom hook for batch processing logic (SRP - separation of concerns)
   const {
     processing,
@@ -23,19 +29,46 @@ const App = () => {
     filePageProgress,
     currentFileIndex,
     totalFiles,
-    elapsedTime,
-    logsDirectory,
-    selectLogsDirectory,
     processBatch,
     getSummary,
-  } = useBatchProcessor(3) // Batch size of 5
+  } = useBatchProcessor(3, logsDirectory) // Batch size of 3, pass logsDirectory
 
   /**
    * Handle file selection and start batch processing
    */
   const handleFileSelect = async (e) => {
     const selectedFiles = Array.from(e.target.files)
-    await processBatch(selectedFiles)
+    
+    // Check if logs directory is selected
+    if (!logsDirectory) {
+      const userWantsToSelect = window.confirm(
+        "Logs directory not selected. Select one now?"
+      );
+      if (userWantsToSelect) {
+        try {
+          await selectLogsDirectory();
+        } catch (error) {
+          alert("Error selecting logs directory: " + error.message);
+          return;
+        }
+      } else {
+        alert("Logs directory is required for batch processing.");
+        return;
+      }
+    }
+
+    // Start timer when processing begins
+    const onStart = () => {
+      resetTimer();
+      startTimer();
+    };
+
+    // Stop timer when processing completes
+    const onComplete = () => {
+      stopTimer();
+    };
+
+    await processBatch(selectedFiles, onStart, onComplete)
 
     // Reset file input
     if (fileInputRef.current) {

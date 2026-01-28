@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { createPDFManager } from "../PDFManager";
 import { LogWriter } from "../LogWriter";
 
@@ -6,10 +6,13 @@ import { LogWriter } from "../LogWriter";
  * useBatchProcessor - Custom hook for batch PDF processing
  * 
  * Single Responsibility: Manage batch processing state and logic
- * Separates processing logic from UI components (SRP)
- * Last updated: Force cache refresh
+ * Only handles file processing - timer and logs directory managed separately (SRP)
+ * 
+ * @param {number} batchSize - Number of files to process in parallel
+ * @param {FileSystemDirectoryHandle} logsDirectory - Directory handle for storing logs
+ * @returns {Object} Batch processing state and methods
  */
-export const useBatchProcessor = (batchSize = 5) => {
+export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
   // File processing state
   const [files, setFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
@@ -18,44 +21,9 @@ export const useBatchProcessor = (batchSize = 5) => {
   const [batchProgress, setBatchProgress] = useState({});
   const [filePageProgress, setFilePageProgress] = useState({});
 
-  // Counter and timer state
+  // Counter state
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [totalFiles, setTotalFiles] = useState(0);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [startTime, setStartTime] = useState(null);
-
-  // Logs directory state
-  const [logsDirectory, setLogsDirectory] = useState(null);
-
-  // Refs for tracking
-  const timerInterval = useRef(null);
-
-  // Timer effect
-  useEffect(() => {
-    if (processing && startTime) {
-      timerInterval.current = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-      }, 100);
-    }
-    return () => {
-      if (timerInterval.current) {
-        clearInterval(timerInterval.current);
-      }
-    };
-  }, [processing, startTime]);
-
-  /**
-   * Select logs directory for storing results
-   */
-  const selectLogsDirectory = async () => {
-    try {
-      const dirHandle = await LogWriter.selectLogsDirectory();
-      setLogsDirectory(dirHandle);
-    } catch (error) {
-      console.error("Error selecting logs directory:", error);
-      alert("Error selecting logs directory: " + error.message);
-    }
-  };
 
   /**
    * Process a single file with provided PDFManager instance
@@ -135,28 +103,20 @@ export const useBatchProcessor = (batchSize = 5) => {
 
   /**
    * Process selected files in batches
+   * @param {File[]} selectedFiles - Array of files to process
+   * @param {Function} onStart - Callback when processing starts
+   * @param {Function} onComplete - Callback when processing completes
    */
-  const processBatch = async (selectedFiles) => {
+  const processBatch = async (selectedFiles, onStart, onComplete) => {
     if (selectedFiles.length === 0) {
       alert("No files selected");
       return;
     }
 
-    // Check if logs directory is selected
+    // Check if logs directory is provided
     if (!logsDirectory) {
-      const userWantsToSelect = window.confirm(
-        "Logs directory not selected. Select one now?"
-      );
-      if (userWantsToSelect) {
-        await selectLogsDirectory();
-        if (!logsDirectory) {
-          alert("Logs directory selection cancelled. Batch processing aborted.");
-          return;
-        }
-      } else {
-        alert("Logs directory is required for batch processing.");
-        return;
-      }
+      alert("Logs directory is required for batch processing.");
+      return;
     }
 
     setFiles(selectedFiles);
@@ -164,10 +124,11 @@ export const useBatchProcessor = (batchSize = 5) => {
     setProcessing(true);
     setResults([]);
     setCurrentFileIndex(0);
-    setElapsedTime(0);
-    setStartTime(Date.now());
     setBatchProgress({});
     setFilePageProgress({});
+
+    // Notify that processing has started
+    if (onStart) onStart();
 
     const processedResults = [];
 
@@ -202,9 +163,9 @@ export const useBatchProcessor = (batchSize = 5) => {
       setCurrentBatch([]);
       setBatchProgress({});
       setFilePageProgress({});
-      if (timerInterval.current) {
-        clearInterval(timerInterval.current);
-      }
+      
+      // Notify that processing has completed
+      if (onComplete) onComplete();
     }
   };
 
@@ -240,8 +201,6 @@ export const useBatchProcessor = (batchSize = 5) => {
     setFilePageProgress({});
     setCurrentFileIndex(0);
     setTotalFiles(0);
-    setElapsedTime(0);
-    setStartTime(null);
   };
 
   return {
@@ -253,11 +212,8 @@ export const useBatchProcessor = (batchSize = 5) => {
     filePageProgress,
     currentFileIndex,
     totalFiles,
-    elapsedTime,
-    logsDirectory,
 
     // Methods
-    selectLogsDirectory,
     processBatch,
     getSummary,
     reset,
