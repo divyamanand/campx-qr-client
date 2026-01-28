@@ -1,3 +1,4 @@
+// currently not in use
 export const structures = [
     {
         structureID: 1, 

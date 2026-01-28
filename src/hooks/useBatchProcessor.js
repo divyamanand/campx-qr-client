@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPDFManager } from "../PDFManager";
+import { LogWriter } from "../LogWriter";
 
 /**
  * useBatchProcessor - Custom hook for batch PDF processing
@@ -22,6 +23,9 @@ export const useBatchProcessor = (batchSize = 5) => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [startTime, setStartTime] = useState(null);
 
+  // Logs directory state
+  const [logsDirectory, setLogsDirectory] = useState(null);
+
   // Refs for tracking
   const timerInterval = useRef(null);
 
@@ -40,9 +44,22 @@ export const useBatchProcessor = (batchSize = 5) => {
   }, [processing, startTime]);
 
   /**
-   * Process a single file and return results
+   * Select logs directory for storing results
    */
-  const processFileWithManager = async (file) => {
+  const selectLogsDirectory = async () => {
+    try {
+      const dirHandle = await LogWriter.selectLogsDirectory();
+      setLogsDirectory(dirHandle);
+    } catch (error) {
+      console.error("Error selecting logs directory:", error);
+      alert("Error selecting logs directory: " + error.message);
+    }
+  };
+
+  /**
+   * Process a single file with provided PDFManager instance
+   */
+  const processFileWithManager = async (file, pdfManager) => {
     try {
       // Mark file as processing
       setBatchProgress((prev) => ({
@@ -55,8 +72,6 @@ export const useBatchProcessor = (batchSize = 5) => {
         ...prev,
         [file.name]: { currentPage: 0, totalPages: 0 },
       }));
-
-      const pdfManager = createPDFManager();
 
       // Pass callback to track page completion
       const fileResult = await pdfManager.processFile(file, (pageInfo) => {
@@ -87,6 +102,11 @@ export const useBatchProcessor = (batchSize = 5) => {
         },
       }));
 
+      // Append result to logs
+      if (logsDirectory) {
+        await LogWriter.appendFileResults(logsDirectory, file.name, result);
+      }
+
       return result;
     } catch (error) {
       const result = {
@@ -103,6 +123,11 @@ export const useBatchProcessor = (batchSize = 5) => {
         [file.name]: { status: "failed", result },
       }));
 
+      // Append failed result to logs
+      if (logsDirectory) {
+        await LogWriter.appendFileResults(logsDirectory, file.name, result);
+      }
+
       return result;
     }
   };
@@ -114,6 +139,23 @@ export const useBatchProcessor = (batchSize = 5) => {
     if (selectedFiles.length === 0) {
       alert("No files selected");
       return;
+    }
+
+    // Check if logs directory is selected
+    if (!logsDirectory) {
+      const userWantsToSelect = window.confirm(
+        "Logs directory not selected. Select one now?"
+      );
+      if (userWantsToSelect) {
+        await selectLogsDirectory();
+        if (!logsDirectory) {
+          alert("Logs directory selection cancelled. Batch processing aborted.");
+          return;
+        }
+      } else {
+        alert("Logs directory is required for batch processing.");
+        return;
+      }
     }
 
     setFiles(selectedFiles);
@@ -138,8 +180,13 @@ export const useBatchProcessor = (batchSize = 5) => {
         setBatchProgress({});
         setFilePageProgress({});
 
-        // Process batch in parallel
-        const batchPromises = batch.map((file) => processFileWithManager(file));
+        // Create ONE instance of PDFManager for this batch
+        const pdfManager = createPDFManager();
+
+        // Process batch in parallel with the same PDFManager instance
+        const batchPromises = batch.map((file) =>
+          processFileWithManager(file, pdfManager)
+        );
         const batchResults = await Promise.all(batchPromises);
 
         processedResults.push(...batchResults);
@@ -206,8 +253,10 @@ export const useBatchProcessor = (batchSize = 5) => {
     currentFileIndex,
     totalFiles,
     elapsedTime,
+    logsDirectory,
 
     // Methods
+    selectLogsDirectory,
     processBatch,
     getSummary,
     reset,

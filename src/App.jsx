@@ -22,6 +22,8 @@ const App = () => {
     currentFileIndex,
     totalFiles,
     elapsedTime,
+    logsDirectory,
+    selectLogsDirectory,
     processBatch,
     getSummary,
   } = useBatchProcessor(3) // Batch size of 5
@@ -89,6 +91,27 @@ const App = () => {
             </>
           )}
         </div>
+      </div>
+
+      {/* Logs Directory Selection */}
+      <div style={styles.logsDirectorySection}>
+        <button
+          onClick={selectLogsDirectory}
+          disabled={processing}
+          style={{
+            ...styles.logsDirectoryButton,
+            opacity: processing ? 0.6 : 1,
+            cursor: processing ? "not-allowed" : "pointer",
+            backgroundColor: logsDirectory ? "#10b981" : "#6366f1",
+          }}
+        >
+          {logsDirectory ? "✓ Logs Directory Selected" : "📁 Select Logs Directory"}
+        </button>
+        {!logsDirectory && (
+          <p style={styles.logsDirectoryWarning}>
+            ⚠️ Logs directory must be selected before processing
+          </p>
+        )}
       </div>
 
       {/* Upload Zone */}
@@ -364,6 +387,31 @@ const styles = {
     fontSize: "0.75rem",
     color: "#64748b",
     marginTop: "2px",
+  },
+  logsDirectorySection: {
+    marginBottom: "2rem",
+    marginTop: "1rem",
+    padding: "1rem",
+    backgroundColor: "#f8fafc",
+    borderRadius: "8px",
+    border: "1px solid #e2e8f0",
+  },
+  logsDirectoryButton: {
+    padding: "0.75rem 1.5rem",
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    border: "none",
+    borderRadius: "6px",
+    color: "white",
+    transition: "all 0.3s ease",
+    cursor: "pointer",
+  },
+  logsDirectoryWarning: {
+    marginTop: "0.75rem",
+    fontSize: "0.9rem",
+    color: "#f59e0b",
+    fontWeight: "500",
+    margin: "0.75rem 0 0 0",
   },
 }
 
