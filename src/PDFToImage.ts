@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist'
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 /**
  * Options for PDF to image conversion
@@ -21,9 +22,9 @@ class PDFToImage {
       imageQuality: options.imageQuality ?? 0.95,
     }
 
-    // Set up pdfjs worker
+    // Set up pdfjs worker from bundled module
     if (typeof window !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
     }
   }
 
