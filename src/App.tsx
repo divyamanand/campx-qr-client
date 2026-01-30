@@ -31,7 +31,7 @@ const App = () => {
     totalFiles,
     processBatch,
     getSummary,
-  } = useBatchProcessor(8, logsDirectory) // Batch size of 3, pass logsDirectory
+  } = useBatchProcessor(3, logsDirectory) // Batch size of 3, pass logsDirectory
 
   /**
    * Handle file selection and start batch processing
