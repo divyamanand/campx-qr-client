@@ -1,7 +1,20 @@
 import * as pdfjsLib from "pdfjs-dist";
+import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+
+export interface PDFToImageOptions {
+  imageType?: string;
+  imageQuality?: number;
+}
+
+export interface ImageResult {
+  blob: Blob | null;
+  width: number;
+  height: number;
+  scale: number;
+}
 
 /**
  * PDFToImage - Responsible for converting PDF pages to images
@@ -9,7 +22,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
  * Single responsibility: Render a PDF page to an image blob at a given scale.
  */
 export class PDFToImage {
-  constructor(options = {}) {
+  imageType: string;
+  imageQuality: number;
+
+  constructor(options: PDFToImageOptions = {}) {
     this.imageType = options.imageType ?? "image/png";
     this.imageQuality = options.imageQuality ?? 1;
   }
@@ -19,7 +35,7 @@ export class PDFToImage {
    * @param {File} pdfFile - The PDF file to load
    * @returns {Promise<PDFDocumentProxy>} - The loaded PDF document
    */
-  async loadDocument(pdfFile) {
+  async loadDocument(pdfFile: File): Promise<PDFDocumentProxy> {
     const arrayBuffer = await pdfFile.arrayBuffer();
     return pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   }
@@ -30,11 +46,11 @@ export class PDFToImage {
    * @param {number} scale - The scale factor for rendering
    * @returns {Promise<ImageResult>} - The rendered image blob with metadata
    */
-  async convertPageToImage(page, scale) {
+  async convertPageToImage(page: PDFPageProxy, scale: number): Promise<ImageResult> {
     const viewport = page.getViewport({ scale });
 
     const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d")!;
 
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -42,9 +58,9 @@ export class PDFToImage {
     await page.render({
       canvasContext: ctx,
       viewport,
-    }).promise;
+    } as any).promise;
 
-    const blob = await new Promise((resolve) =>
+    const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, this.imageType, this.imageQuality)
     );
 
