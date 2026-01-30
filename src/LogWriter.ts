@@ -1,166 +1,296 @@
 /**
- * Manages logging using File System Access API
+ * LogWriter - Handles reading and writing logs to logs.json using File System Access API
+ * 
+ * This class provides static methods for managing application logs in a persistent
+ * logs.json file. It transforms processing results from PDFManager into a standardized
+ * log format and handles file system operations.
  */
-
-interface FileResult {
-  fileName: string
-  success: boolean
-  totalPages: number
-  results: Record<string, unknown>
-  error?: string
-}
-
-interface LogEntry {
-  [key: string]: unknown
-}
-
-interface VerificationData {
-  filesToRetry: Record<string, number[]>
-  bestCounts: Record<string, number>
-}
-
-const LOG_FILE_NAME = 'logs.json'
-
 class LogWriter {
   /**
-   * Open directory picker for logs directory
+   * Opens a directory picker dialog allowing the user to select the logs directory
+   * 
+   * @async
+   * @returns {Promise<FileSystemDirectoryHandle>} Handle to the selected directory
+   * @throws {Error} If user cancels the picker or browser doesn't support File System Access API
+   * 
+   * @example
+   * const dirHandle = await LogWriter.selectLogsDirectory();
    */
-  static async selectLogsDirectory(): Promise<FileSystemDirectoryHandle> {
-    const dirHandle = await (window as any).showDirectoryPicker({
-      mode: 'readwrite',
-      startIn: 'documents',
-    })
-    return dirHandle
-  }
-
-  /**
-   * Read logs.json file from directory
-   */
-  static async readLogsFile(
-    dirHandle: FileSystemDirectoryHandle
-  ): Promise<Record<string, LogEntry> | null> {
+  static async selectLogsDirectory() {
     try {
-      const fileHandle = await dirHandle.getFileHandle(LOG_FILE_NAME)
-      const file = await fileHandle.getFile()
-      const text = await file.text()
-      return JSON.parse(text)
+      const dirHandle = await window.showDirectoryPicker({
+        mode: 'readwrite',
+        startIn: 'desktop'
+      });
+      return dirHandle;
     } catch (error) {
-      console.warn('No logs file found or error reading:', error)
-      return null
+      if (error.name === 'AbortError') {
+        throw new Error('Directory picker was cancelled by user');
+      }
+      throw new Error(`Failed to select logs directory: ${error.message}`);
     }
   }
 
   /**
-   * Write logs.json file to directory
+   * Reads the logs.json file from the specified directory
+   * 
+   * @async
+   * @param {FileSystemDirectoryHandle} dirHandle - Handle to the directory containing logs.json
+   * @returns {Promise<Object>} Parsed logs object, or empty object {} if file doesn't exist
+   * @throws {Error} If file read fails or JSON parsing fails
+   * 
+   * @example
+   * const logs = await LogWriter.readLogsFile(dirHandle);
    */
-  static async writeLogsFile(
-    dirHandle: FileSystemDirectoryHandle,
-    logs: Record<string, unknown>
-  ): Promise<void> {
-    const fileHandle = await dirHandle.getFileHandle(LOG_FILE_NAME, {
-      create: true,
-    })
-    const writable = await fileHandle.createWritable()
-    await writable.write(JSON.stringify(logs, null, 2))
-    await writable.close()
-  }
-
-  /**
-   * Transform PDFManager results to log format
-   */
-  static transformResults(fileResult: FileResult): Record<string, unknown> {
-    const transformed: Record<string, unknown> = {}
-
-    if (
-      typeof fileResult.results === 'object' &&
-      fileResult.results !== null &&
-      !Array.isArray(fileResult.results)
-    ) {
-      Object.entries(fileResult.results).forEach(([pageStr, pageData]) => {
-        transformed[pageStr] = pageData
-      })
-    }
-
-    return transformed
-  }
-
-  /**
-   * Append file results to logs
-   */
-  static async appendFileResults(
-    dirHandle: FileSystemDirectoryHandle,
-    fileName: string,
-    fileResult: FileResult
-  ): Promise<void> {
+  static async readLogsFile(dirHandle) {
     try {
-      // Read existing logs
-      let logs = (await this.readLogsFile(dirHandle)) || {}
-
-      // Transform and add new results
-      const transformedResults = this.transformResults(fileResult)
-      logs[fileName] = transformedResults
-
-      // Write updated logs
-      await this.writeLogsFile(dirHandle, logs)
+      const fileHandle = await dirHandle.getFileHandle('logs.json', { create: false });
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      
+      if (!text.trim()) {
+        return {};
+      }
+      
+      return JSON.parse(text);
     } catch (error) {
-      console.error('Error appending file results:', error)
-      throw error
+      if (error.name === 'NotFoundError') {
+        return {};
+      }
+      throw new Error(`Failed to read logs.json: ${error.message}`);
     }
   }
 
   /**
-   * Verify logs and identify pages that need retry
+   * Writes the logs object to logs.json in the specified directory
+   * 
+   * @async
+   * @param {FileSystemDirectoryHandle} dirHandle - Handle to the directory for logs.json
+   * @param {Object} logs - Logs object to write to file
+   * @returns {Promise<void>}
+   * @throws {Error} If file write fails
+   * 
+   * @example
+   * await LogWriter.writeLogsFile(dirHandle, logs);
    */
-  static async verifyAndGetRetryPages(
-    dirHandle: FileSystemDirectoryHandle
-  ): Promise<VerificationData> {
-    const filesToRetry: Record<string, number[]> = {}
-    const bestCounts: Record<string, number> = {}
-
+  static async writeLogsFile(dirHandle, logs) {
     try {
-      const logs = await this.readLogsFile(dirHandle)
-      if (!logs) {
-        return { filesToRetry, bestCounts }
+      const fileHandle = await dirHandle.getFileHandle('logs.json', { create: true });
+      const writable = await fileHandle.createWritable();
+      
+      const jsonString = JSON.stringify(logs, null, 2);
+      await writable.write(jsonString);
+      await writable.close();
+    } catch (error) {
+      throw new Error(`Failed to write logs.json: ${error.message}`);
+    }
+  }
+
+  /**
+   * Transforms a PDFManager.processFile() result into the standardized log format
+   * 
+   * The input format contains page-level results with processing metadata.
+   * The output format contains only the log-relevant data (success status, errors, codes).
+   * 
+   * @param {Object} fileResult - Result object from PDFManager.processFile()
+   * @returns {Object} Transformed log object with format:
+   *   {
+   *     "pageNumber": {
+   *       success: boolean,
+   *       errors: string[],
+   *       codes: Array<{[format]: string}>
+   *     }
+   *   }
+   * 
+   * @example
+   * const logData = LogWriter.transformResults(fileResult);
+   * // Returns: { "1": { success: true, errors: [], codes: [{QRCode: "ABC123"}] }, ... }
+   */
+  static transformResults(fileResult) {
+    const transformedLogs = {};
+
+    if (!fileResult || !fileResult.results) {
+      return transformedLogs;
+    }
+
+    Object.entries(fileResult.results).forEach(([pageNumber, pageResult]) => {
+      const logEntry = {
+        success: pageResult.success || false,
+        errors: [],
+        codes: []
+      };
+
+      if (pageResult.result) {
+        // Handle success case
+        if (pageResult.result.success && pageResult.result.codes) {
+          logEntry.codes = pageResult.result.codes.map(code => ({
+            [code.format]: code.data
+          }));
+        }
+
+        // Handle error case
+        if (pageResult.result.error) {
+          logEntry.errors.push(pageResult.result.error);
+        }
       }
 
-      // Analyze each file's pages
-      Object.entries(logs).forEach(([fileName, fileLog]) => {
-        const fileLogObj = fileLog as Record<string, unknown>
-        const pageCounts: Record<number, number> = {}
-        let maxCount = 0
+      transformedLogs[pageNumber] = logEntry;
+    });
 
-        // Count codes on each page
-        Object.entries(fileLogObj).forEach(([pageStr, pageData]) => {
-          const pageNum = parseInt(pageStr, 10)
-          const pageObj = pageData as Record<string, unknown>
-          const codes = (pageObj.codes as Array<unknown>) || []
-          const codeCount = codes.length
-          pageCounts[pageNum] = codeCount
-          maxCount = Math.max(maxCount, codeCount)
-        })
+    return transformedLogs;
+  }
 
-        // Find pages with inconsistent counts
-        bestCounts[fileName] = maxCount
-        const pagesToRetry: number[] = []
+  /**
+   * Main method that orchestrates reading, transforming, appending, and writing logs
+   * 
+   * This is the primary entry point for logging file processing results.
+   * It handles the complete workflow: read existing logs, transform new results,
+   * append to existing file logs, and write back to disk.
+   * 
+   * @async
+   * @param {FileSystemDirectoryHandle} dirHandle - Handle to the directory containing logs.json
+   * @param {string} fileName - Name of the processed file (used as log key)
+   * @param {Object} fileResult - Result object from PDFManager.processFile()
+   * @returns {Promise<Object>} The updated complete logs object
+   * @throws {Error} If any step of the process fails
+   * 
+   * @example
+   * const dirHandle = await LogWriter.selectLogsDirectory();
+   * const updatedLogs = await LogWriter.appendFileResults(
+   *   dirHandle,
+   *   'document.pdf',
+   *   pdfProcessingResult
+   * );
+   */
+  static async appendFileResults(dirHandle, fileName, fileResult) {
+    try {
+      // Step 1: Read existing logs
+      const logs = await LogWriter.readLogsFile(dirHandle);
 
-        Object.entries(pageCounts).forEach(([pageStr, count]) => {
-          const pageNum = parseInt(pageStr, 10)
-          // Retry if count is significantly less than max (more than 20% difference)
-          if (maxCount > 0 && count < maxCount * 0.8) {
-            pagesToRetry.push(pageNum)
-          }
-        })
+      // Step 2: Transform the new results
+      const transformedResults = LogWriter.transformResults(fileResult);
 
-        if (pagesToRetry.length > 0) {
-          filesToRetry[fileName] = pagesToRetry.sort((a, b) => a - b)
-        }
-      })
+      // Step 3: Append/update the file entry in logs
+      logs[fileName] = transformedResults;
+
+      // Step 4: Write updated logs back to file
+      await LogWriter.writeLogsFile(dirHandle, logs);
+
+      return logs;
     } catch (error) {
-      console.error('Error during verification:', error)
+      throw new Error(`Failed to append file results: ${error.message}`);
     }
+  }
 
-    return { filesToRetry, bestCounts }
+  /**
+   * Verification function to identify pages that need to be retried
+   * 
+   * This function analyzes all processed files to find the maximum (best) count
+   * of codes per page number across all files. Then identifies files where the
+   * count is less than the best count, indicating potential processing failures.
+   * 
+   * @async
+   * @param {FileSystemDirectoryHandle} dirHandle - Handle to the directory containing logs.json
+   * @returns {Promise<Object>} Object with structure:
+   *   {
+   *     filesToRetry: { fileName: [pageNumbers] },
+   *     bestCounts: { pageNumber: { QRCode: count, Code128: count } }
+   *   }
+   * @throws {Error} If reading logs fails
+   * 
+   * @example
+   * const verification = await LogWriter.verifyAndGetRetryPages(dirHandle);
+   * // Returns: { 
+   * //   filesToRetry: { 'doc1.pdf': [1, 3], 'doc2.pdf': [2] },
+   * //   bestCounts: { '1': { QRCode: 2, Code128: 1 }, ... }
+   * // }
+   */
+  static async verifyAndGetRetryPages(dirHandle) {
+    try {
+      // Step 1: Read logs
+      const logs = await LogWriter.readLogsFile(dirHandle);
+
+      if (!logs || Object.keys(logs).length === 0) {
+        return { filesToRetry: {}, bestCounts: {} };
+      }
+
+      // Step 2: Create bestCount dictionary to track maximum codes per page
+      const bestCounts = {};
+
+      // First pass: Find the maximum count for each page number
+      Object.entries(logs).forEach(([fileName, fileLog]) => {
+        Object.entries(fileLog).forEach(([pageNumber, pageData]) => {
+          // Initialize page in bestCounts if not exists
+          if (!bestCounts[pageNumber]) {
+            bestCounts[pageNumber] = { QRCode: 0, Code128: 0 };
+          }
+
+          // Count codes by type for this page
+          let qrCount = 0;
+          let code128Count = 0;
+
+          if (pageData.codes && Array.isArray(pageData.codes)) {
+            pageData.codes.forEach((codeObj) => {
+              if (codeObj.QRCode) qrCount++;
+              if (codeObj.Code128) code128Count++;
+            });
+          }
+
+          // Update best counts (maximum found so far)
+          bestCounts[pageNumber].QRCode = Math.max(
+            bestCounts[pageNumber].QRCode,
+            qrCount
+          );
+          bestCounts[pageNumber].Code128 = Math.max(
+            bestCounts[pageNumber].Code128,
+            code128Count
+          );
+        });
+      });
+
+      // Step 3: Second pass - identify pages that need retry
+      const filesToRetry = {};
+
+      Object.entries(logs).forEach(([fileName, fileLog]) => {
+        Object.entries(fileLog).forEach(([pageNumber, pageData]) => {
+          // Count codes by type for this page
+          let qrCount = 0;
+          let code128Count = 0;
+
+          if (pageData.codes && Array.isArray(pageData.codes)) {
+            pageData.codes.forEach((codeObj) => {
+              if (codeObj.QRCode) qrCount++;
+              if (codeObj.Code128) code128Count++;
+            });
+          }
+
+          // Check if counts mismatch the best counts
+          const needsRetry =
+            qrCount < bestCounts[pageNumber].QRCode ||
+            code128Count < bestCounts[pageNumber].Code128;
+
+          if (needsRetry) {
+            if (!filesToRetry[fileName]) {
+              filesToRetry[fileName] = [];
+            }
+            filesToRetry[fileName].push(parseInt(pageNumber));
+          }
+        });
+      });
+
+      // Sort page numbers for each file
+      Object.keys(filesToRetry).forEach((fileName) => {
+        filesToRetry[fileName].sort((a, b) => a - b);
+      });
+
+      return {
+        filesToRetry,
+        bestCounts,
+      };
+    } catch (error) {
+      throw new Error(`Failed to verify and get retry pages: ${error.message}`);
+    }
   }
 }
 
-export { LogWriter }
+export { LogWriter };

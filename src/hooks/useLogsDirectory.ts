@@ -1,34 +1,45 @@
-import { useState } from 'react'
-import { LogWriter } from '../LogWriter'
+import { useState } from "react";
+import { LogWriter } from "../LogWriter";
 
-interface LogsDirectoryReturn {
-  logsDirectory: FileSystemDirectoryHandle | null
-  selectLogsDirectory: () => Promise<FileSystemDirectoryHandle>
-  clearLogsDirectory: () => void
-}
+/**
+ * useLogsDirectory - Custom hook for managing logs directory selection
+ * 
+ * Single Responsibility: Handle logs directory state and operations
+ * Separates directory management from processing logic (SRP)
+ * 
+ * @returns {Object} Object containing:
+ *   - logsDirectory: Current logs directory handle
+ *   - selectLogsDirectory: Function to select logs directory
+ *   - clearLogsDirectory: Function to clear the selected directory
+ */
+export const useLogsDirectory = () => {
+  const [logsDirectory, setLogsDirectory] = useState(null);
 
-export const useLogsDirectory = (): LogsDirectoryReturn => {
-  const [logsDirectory, setLogsDirectory] =
-    useState<FileSystemDirectoryHandle | null>(null)
-
-  const selectLogsDirectory = async (): Promise<FileSystemDirectoryHandle> => {
+  /**
+   * Select logs directory for storing results
+   * Opens a directory picker dialog
+   */
+  const selectLogsDirectory = async () => {
     try {
-      const dirHandle = await LogWriter.selectLogsDirectory()
-      setLogsDirectory(dirHandle)
-      return dirHandle
+      const dirHandle = await LogWriter.selectLogsDirectory();
+      setLogsDirectory(dirHandle);
+      return dirHandle;
     } catch (error) {
-      console.error('Error selecting logs directory:', error)
-      throw error
+      console.error("Error selecting logs directory:", error);
+      throw error;
     }
-  }
+  };
 
-  const clearLogsDirectory = (): void => {
-    setLogsDirectory(null)
-  }
+  /**
+   * Clear the currently selected logs directory
+   */
+  const clearLogsDirectory = () => {
+    setLogsDirectory(null);
+  };
 
   return {
     logsDirectory,
     selectLogsDirectory,
     clearLogsDirectory,
-  }
-}
+  };
+};

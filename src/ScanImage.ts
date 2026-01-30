@@ -1,139 +1,55 @@
-import * as ZXing from 'zxing-wasm'
+import { readBarcodes } from "zxing-wasm/reader";
 
 /**
- * Result from scanning an image
+ * ScanImage - Responsible for scanning image blobs for barcodes/QR codes
+ *
+ * Single responsibility: Take an image blob and return scan results
+ * with a clear pass/fail indicator.
  */
-interface ScanResult {
-  success: boolean
-  codes: Record<string, unknown>[]
-  rawResults?: unknown[]
-}
-
-/**
- * Options for barcode scanning
- */
-interface ScanOptions {
-  tryHarder?: boolean
-  formats?: string[]
-  maxNumberOfSymbols?: number
-}
-
-/**
- * Wrapper around zxing-wasm for QR code and barcode scanning
- */
-class ScanImage {
-  private options: ScanOptions
-
-  constructor(options: ScanOptions = {}) {
-    this.options = {
+export class ScanImage {
+  constructor(options = {}) {
+    this.readerOptions = {
       tryHarder: options.tryHarder ?? true,
-      formats: options.formats ?? ['QRCode', 'Code128'],
+      formats: options.formats ?? ["QRCode", "Code128"],
       maxNumberOfSymbols: options.maxNumberOfSymbols ?? 2,
-    }
+    };
   }
 
   /**
-   * Scan image blob for barcodes and QR codes
+   * Scan an image blob for barcodes/QR codes
+   * @param {Blob} blob - The image blob to scan
+   * @returns {Promise<ScanResult>} - Scan result with pass/fail indicator
    */
-  async scan(blob: Blob): Promise<ScanResult> {
+  async scan(blob) {
     try {
-      const arrayBuffer = await blob.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
+      const results = await readBarcodes(blob, this.readerOptions);
 
-      // Create image from blob data
-      const image = new Image()
-      const objectUrl = URL.createObjectURL(blob)
+      if (!results || results.length === 0) {
+        return {
+          success: false,
+          codes: [],
+          error: "NO_BARCODE_FOUND",
+        };
+      }
 
-      return new Promise((resolve) => {
-        image.onload = async () => {
-          try {
-            // Create canvas from image
-            const canvas = document.createElement('canvas')
-            canvas.width = image.width
-            canvas.height = image.height
-            const context = canvas.getContext('2d')
-
-            if (!context) {
-              resolve({
-                success: false,
-                codes: [],
-              })
-              return
-            }
-
-            context.drawImage(image, 0, 0)
-            const imageData = context.getImageData(
-              0,
-              0,
-              canvas.width,
-              canvas.height
-            )
-
-            // Attempt to read barcodes from the image
-            const results = (ZXing as any).readBarcodes(imageData)
-
-            if (!results || results.length === 0) {
-              resolve({
-                success: false,
-                codes: [],
-                rawResults: results,
-              })
-              return
-            }
-
-            // Transform results to our format
-            const codes = results.map((result: any) => ({
-              rawValue: result.text,
-              format: result.format,
-              QRCode: result.format === 'QRCode',
-              Code128: result.format === 'Code128',
-              rawResult: result,
-            }))
-
-            resolve({
-              success: true,
-              codes,
-              rawResults: results,
-            })
-          } catch (error) {
-            console.error('Scan error:', error)
-            resolve({
-              success: false,
-              codes: [],
-            })
-          } finally {
-            URL.revokeObjectURL(objectUrl)
-          }
-        }
-
-        image.onerror = () => {
-          console.error('Failed to load image')
-          resolve({
-            success: false,
-            codes: [],
-          })
-          URL.revokeObjectURL(objectUrl)
-        }
-
-        image.src = objectUrl
-      })
-    } catch (error) {
-      console.error('Scan error:', error)
+      return {
+        success: true,
+        codes: results.map((result) => ({
+          data: result.text,
+          format: result.format,
+          position: result.position || null,
+        })),
+        error: null,
+      };
+    } catch (err) {
       return {
         success: false,
         codes: [],
-      }
+        error: err instanceof Error ? err.message : "BARCODE_DECODE_FAILED",
+      };
     }
   }
 }
 
-/**
- * Default scanner instance with standard configuration
- */
-export const defaultScanner = new ScanImage({
-  tryHarder: true,
-  formats: ['QRCode', 'Code128'],
-  maxNumberOfSymbols: 2,
-})
-
-export default ScanImage
+// Default singleton instance for convenience
+export const defaultScanner = new ScanImage();

@@ -1,92 +1,64 @@
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min?url";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 /**
- * Options for PDF to image conversion
+ * PDFToImage - Responsible for converting PDF pages to images
+ *
+ * Single responsibility: Render a PDF page to an image blob at a given scale.
  */
-interface PDFToImageOptions {
-  imageType?: string
-  imageQuality?: number
-}
-
-/**
- * Converts PDF pages to image blobs
- */
-class PDFToImage {
-  private pdfDocument: pdfjsLib.PDFDocument | null = null
-  private options: PDFToImageOptions
-
-  constructor(options: PDFToImageOptions = {}) {
-    this.options = {
-      imageType: options.imageType ?? 'image/png',
-      imageQuality: options.imageQuality ?? 0.95,
-    }
-
-    // Set up pdfjs worker from bundled module
-    if (typeof window !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
-    }
+export class PDFToImage {
+  constructor(options = {}) {
+    this.imageType = options.imageType ?? "image/png";
+    this.imageQuality = options.imageQuality ?? 1;
   }
 
   /**
-   * Load a PDF document from File
+   * Load a PDF document from a File
+   * @param {File} pdfFile - The PDF file to load
+   * @returns {Promise<PDFDocumentProxy>} - The loaded PDF document
    */
-  async loadDocument(pdfFile: File): Promise<pdfjsLib.PDFDocument> {
-    const arrayBuffer = await pdfFile.arrayBuffer()
-    this.pdfDocument = await pdfjsLib.getDocument({ data: arrayBuffer })
-      .promise
-    return this.pdfDocument
+  async loadDocument(pdfFile) {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    return pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   }
 
   /**
-   * Convert a PDF page to an image blob using browser Canvas API
+   * Convert a PDF page to an image blob
+   * @param {PDFPageProxy} page - The PDF page to render
+   * @param {number} scale - The scale factor for rendering
+   * @returns {Promise<ImageResult>} - The rendered image blob with metadata
    */
-  async convertPageToImage(
-    page: pdfjsLib.PDFPageProxy,
-    scale: number
-  ): Promise<Blob> {
-    const viewport = page.getViewport({ scale })
+  async convertPageToImage(page, scale) {
+    const viewport = page.getViewport({ scale });
 
-    // Create browser canvas element
-    const canvas = document.createElement('canvas')
-    canvas.width = viewport.width
-    canvas.height = viewport.height
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
-    const context = canvas.getContext('2d')
-    if (!context) {
-      throw new Error('Could not get 2D context from canvas')
-    }
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
 
-    const renderContext = {
-      canvasContext: context,
-      viewport: viewport,
-    }
+    await page.render({
+      canvasContext: ctx,
+      viewport,
+    }).promise;
 
-    await page.render(renderContext).promise
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, this.imageType, this.imageQuality)
+    );
 
-    // Convert canvas to blob
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            resolve(blob)
-          } else {
-            reject(new Error('Failed to convert canvas to blob'))
-          }
-        },
-        this.options.imageType || 'image/png',
-        this.options.imageQuality || 0.95
-      )
-    })
+    // Cleanup canvas
+    canvas.width = canvas.height = 0;
+
+    return {
+      blob,
+      width: viewport.width,
+      height: viewport.height,
+      scale,
+    };
   }
 }
 
-/**
- * Default PDF to image converter
- */
-export const defaultPDFToImage = new PDFToImage({
-  imageType: 'image/png',
-  imageQuality: 0.95,
-})
-
-export default PDFToImage
+// Default singleton instance for convenience
+export const defaultPDFToImage = new PDFToImage();

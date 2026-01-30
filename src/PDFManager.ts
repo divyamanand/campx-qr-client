@@ -1,245 +1,153 @@
-import ScanImage from './ScanImage'
-import PDFToImage from './PDFToImage'
-import { rotateImage } from './imageUtils'
-import ScaleSequenceGenerator from './ScaleSequenceGenerator'
+import { ScanImage } from "./ScanImage";
+import { PDFToImage } from "./PDFToImage";
+import { rotateImage } from "./imageUtils";
 
 /**
- * Code detection result
+ * Default configuration for PDFManager
  */
-interface Code {
-  rawValue?: string
-  format?: string
-  QRCode?: boolean
-  Code128?: boolean
-  [key: string]: unknown
-}
+const DEFAULT_CONFIG = {
+  initialScale: 3,
+  enableRotation: true,
+  rotationDegrees: 180,
+};
 
 /**
- * Page processing result
+ * PDFManager - Orchestrates PDF processing
+ *
+ * Single Responsibility: Coordinate PDF page processing workflow
+ * - Delegates page-to-image conversion to PDFToImage
+ * - Delegates scanning to ScanImage
+ * - Focuses on orchestrating the processing pipeline
+ * - Stateless: processes and returns, no internal storage
  */
-interface PageScanResult {
-  pageNumber: number
-  success: boolean
-  codes: Code[]
-  scale: number
-  rotated: boolean
-  errors?: string[]
-}
-
-/**
- * File processing result
- */
-interface FileScanResult {
-  success: boolean
-  totalPages: number
-  results: Record<number, PageScanResult>
-  error?: string
-}
-
-/**
- * Options for PDF processing
- */
-interface PDFManagerOptions {
-  initialScale?: number
-  enableRotation?: boolean
-  rotationDegrees?: number
-}
-
-/**
- * Callback for page progress updates
- */
-type PageCallback = (pageInfo: {
-  pageNumber: number
-  totalPages: number
-}) => void
-
-/**
- * Orchestrates PDF processing: converts pages to images and scans for barcodes
- */
-class PDFManager {
-  private scanner: ScanImage
-  private pdfToImage: PDFToImage
-  private options: Required<PDFManagerOptions>
-
-  constructor(options: PDFManagerOptions = {}) {
-    this.scanner = new ScanImage({
-      tryHarder: true,
-      formats: ['QRCode', 'Code128'],
-      maxNumberOfSymbols: 2,
-    })
-    this.pdfToImage = new PDFToImage({
-      imageType: 'image/png',
-      imageQuality: 0.95,
-    })
-    this.options = {
-      initialScale: options.initialScale ?? 3,
-      enableRotation: options.enableRotation ?? true,
-      rotationDegrees: options.rotationDegrees ?? 180,
-    }
+export class PDFManager {
+  /**
+   * @param {Object} config - Configuration options
+   * @param {number} config.initialScale - Starting scale for rendering (default: 3)
+   * @param {boolean} config.enableRotation - Whether to try rotation on failure (default: true)
+   * @param {number} config.rotationDegrees - Degrees to rotate on retry (default: 180)
+   */
+  constructor(config = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.scanner = new ScanImage();
+    this.pdfToImage = new PDFToImage();
   }
 
   /**
    * Try scanning with rotation
+   * @param {Blob} blob - Image blob to scan
+   * @returns {Promise<{result: ScanResult, rotated: boolean}>}
    */
-  private async tryScanWithRotation(
-    imageBlob: Blob,
-    scale: number
-  ): Promise<{
-    success: boolean
-    codes: Code[]
-    rotated: boolean
-  }> {
-    // Try normal orientation first
-    let scanResult = await this.scanner.scan(imageBlob)
-    if (scanResult.success && scanResult.codes.length > 0) {
-      return {
-        success: true,
-        codes: scanResult.codes,
-        rotated: false,
+  async tryScanWithRotation(blob) {
+    // First try: scan original
+    let result = await this.scanner.scan(blob);
+    if (result.success) {
+      return { result, rotated: false };
+    }
+
+    // Second try: rotate and scan
+    if (this.config.enableRotation) {
+      const rotatedBlob = await rotateImage(blob, this.config.rotationDegrees);
+      result = await this.scanner.scan(rotatedBlob);
+      if (result.success) {
+        return { result, rotated: true };
       }
     }
 
-    // Try rotated if enabled
-    if (this.options.enableRotation) {
-      try {
-        const rotatedBlob = await rotateImage(
-          imageBlob,
-          this.options.rotationDegrees
-        )
-        scanResult = await this.scanner.scan(rotatedBlob)
-        if (scanResult.success && scanResult.codes.length > 0) {
-          return {
-            success: true,
-            codes: scanResult.codes,
-            rotated: true,
-          }
-        }
-      } catch (error) {
-        console.warn('Rotation scan failed:', error)
-      }
-    }
-
-    return {
-      success: false,
-      codes: [],
-      rotated: false,
-    }
+    return { result, rotated: false };
   }
 
   /**
    * Process a single page
+   * @param {PDFPageProxy} page - PDF page to process
+   * @param {number} pageNumber - Page number
+   * @returns {Promise<{success: boolean, result: Object, scale: number, rotated: boolean}>}
    */
-  private async processPage(
-    page: any,
-    pageNumber: number,
-    maxRetries: number = 3
-  ): Promise<PageScanResult> {
-    const scaleSequence = ScaleSequenceGenerator.generate(
-      this.options.initialScale,
-      5,
-      1
-    )
+  async processPage(page, pageNumber) {
+    try {
+      // Convert page to image at initial scale
+      const imageResult = await this.pdfToImage.convertPageToImage(page, this.config.initialScale);
 
-    for (const scale of scaleSequence.slice(0, maxRetries)) {
-      try {
-        // Convert page to image
-        const imageBlob = await this.pdfToImage.convertPageToImage(page, scale)
+      // Try scanning with rotation if needed
+      const { result, rotated } = await this.tryScanWithRotation(imageResult.blob);
 
-        // Try scanning with rotation
-        const scanResult = await this.tryScanWithRotation(imageBlob, scale)
-
-        if (scanResult.success && scanResult.codes.length > 0) {
-          return {
-            pageNumber,
-            success: true,
-            codes: scanResult.codes,
-            scale,
-            rotated: scanResult.rotated,
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `Error processing page ${pageNumber} at scale ${scale}:`,
-          error
-        )
-      }
-    }
-
-    // Return failure after exhausting retries
-    return {
-      pageNumber,
-      success: false,
-      codes: [],
-      scale: this.options.initialScale,
-      rotated: false,
-      errors: ['Failed to detect codes after retries'],
+      return {
+        success: result.success,
+        result,
+        scale: this.config.initialScale,
+        rotated,
+      };
+    } catch (err) {
+      console.warn(`Error processing page ${pageNumber}:`, err);
+      return {
+        success: false,
+        result: {
+          success: false,
+          codes: [],
+          error: "FAILED_TO_DETECT_ANY_CODE",
+        },
+        scale: this.config.initialScale,
+        rotated: false,
+      };
     }
   }
 
   /**
-   * Process entire PDF file
+   * Process an entire PDF file
+   * @param {File} pdfFile - The PDF file to process
+   * @param {Function} onPageComplete - Optional callback for progress updates
+   * @returns {Promise<{fileName: string, totalPages: number, results: Object, success: boolean}>}
    */
-  async processFile(
-    pdfFile: File,
-    onPageComplete?: PageCallback
-  ): Promise<FileScanResult> {
+  async processFile(pdfFile, onPageComplete = null) {
+    const fileName = pdfFile.name;
+    const fileResults = {};
+
     try {
-      // Load PDF
-      const pdfDocument = await this.pdfToImage.loadDocument(pdfFile)
-      const numPages = pdfDocument.numPages
+      const pdf = await this.pdfToImage.loadDocument(pdfFile);
+      const totalPages = pdf.numPages;
 
-      const results: Record<number, PageScanResult> = {}
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const pageResult = await this.processPage(page, pageNum);
 
-      // Process each page
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        try {
-          const page = await pdfDocument.getPage(pageNum)
-          const pageResult = await this.processPage(page, pageNum)
-          results[pageNum] = pageResult
+        // Store result in local object
+        fileResults[pageNum] = {
+          result: pageResult.result,
+          scale: pageResult.scale,
+          rotated: pageResult.rotated,
+          success: pageResult.success,
+        };
 
-          // Call progress callback
-          if (onPageComplete) {
-            onPageComplete({
-              pageNumber: pageNum,
-              totalPages: numPages,
-            })
-          }
-        } catch (error) {
-          console.error(`Error getting page ${pageNum}:`, error)
-          results[pageNum] = {
+        // Progress callback
+        if (onPageComplete) {
+          onPageComplete({
+            fileName,
             pageNumber: pageNum,
-            success: false,
-            codes: [],
-            scale: this.options.initialScale,
-            rotated: false,
-            errors: [(error as Error).message],
-          }
+            totalPages,
+            pageResult,
+          });
         }
       }
 
       return {
-        success: Object.values(results).some((r) => r.success),
-        totalPages: numPages,
-        results,
-      }
-    } catch (error) {
+        fileName,
+        totalPages,
+        results: fileResults,
+        success: true,
+      };
+    } catch (err) {
       return {
-        success: false,
+        fileName,
         totalPages: 0,
-        results: {},
-        error: (error as Error).message,
-      }
+        results: fileResults,
+        success: false,
+        error: err.message,
+      };
     }
   }
 }
 
-/**
- * Factory function to create PDFManager instance
- */
-export const createPDFManager = (
-  options: PDFManagerOptions = {}
-): PDFManager => {
-  return new PDFManager(options)
+// Export a factory function for convenience
+export function createPDFManager(config = {}) {
+  return new PDFManager(config);
 }
-
-export default PDFManager
