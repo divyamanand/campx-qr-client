@@ -1,11 +1,26 @@
-import { ScanImage } from "./ScanImage";
+import type { PDFPageProxy } from "pdfjs-dist";
+import { ScanImage, type ScanResult } from "./ScanImage";
 import { PDFToImage } from "./PDFToImage";
 import { rotateImage } from "./imageUtils";
+
+interface PDFManagerConfig {
+  initialScale?: number;
+  enableRotation?: boolean;
+  rotationDegrees?: number;
+}
+
+interface PageProcessResult {
+  success: boolean;
+  result: ScanResult;
+  scale: number;
+  rotated: boolean;
+}
+
 
 /**
  * Default configuration for PDFManager
  */
-const DEFAULT_CONFIG = {
+const DEFAULT_CONFIG: Required<PDFManagerConfig> = {
   initialScale: 3,
   enableRotation: true,
   rotationDegrees: 180,
@@ -21,13 +36,17 @@ const DEFAULT_CONFIG = {
  * - Stateless: processes and returns, no internal storage
  */
 export class PDFManager {
+  config: Required<PDFManagerConfig>;
+  scanner: ScanImage;
+  pdfToImage: PDFToImage;
+
   /**
    * @param {Object} config - Configuration options
    * @param {number} config.initialScale - Starting scale for rendering (default: 3)
    * @param {boolean} config.enableRotation - Whether to try rotation on failure (default: true)
    * @param {number} config.rotationDegrees - Degrees to rotate on retry (default: 180)
    */
-  constructor(config = {}) {
+  constructor(config: PDFManagerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.scanner = new ScanImage();
     this.pdfToImage = new PDFToImage();
@@ -38,7 +57,7 @@ export class PDFManager {
    * @param {Blob} blob - Image blob to scan
    * @returns {Promise<{result: ScanResult, rotated: boolean}>}
    */
-  async tryScanWithRotation(blob) {
+  async tryScanWithRotation(blob: Blob): Promise<{ result: ScanResult; rotated: boolean }> {
     // First try: scan original
     let result = await this.scanner.scan(blob);
     if (result.success) {
@@ -63,13 +82,13 @@ export class PDFManager {
    * @param {number} pageNumber - Page number
    * @returns {Promise<{success: boolean, result: Object, scale: number, rotated: boolean}>}
    */
-  async processPage(page, pageNumber) {
+  async processPage(page: PDFPageProxy, pageNumber: number): Promise<PageProcessResult> {
     try {
       // Convert page to image at initial scale
       const imageResult = await this.pdfToImage.convertPageToImage(page, this.config.initialScale);
 
       // Try scanning with rotation if needed
-      const { result, rotated } = await this.tryScanWithRotation(imageResult.blob);
+      const { result, rotated } = await this.tryScanWithRotation(imageResult.blob!);
 
       return {
         success: result.success,
@@ -98,7 +117,21 @@ export class PDFManager {
    * @param {Function} onPageComplete - Optional callback for progress updates
    * @returns {Promise<{fileName: string, totalPages: number, results: Object, success: boolean}>}
    */
-  async processFile(pdfFile, onPageComplete = null) {
+  async processFile(
+    pdfFile: File,
+    onPageComplete?: ((data: {
+      fileName: string;
+      pageNumber: number;
+      totalPages: number;
+      pageResult: PageProcessResult;
+    }) => void) | null
+  ): Promise<{
+    fileName: string;
+    totalPages: number;
+    results: Record<number, PageProcessResult>;
+    success: boolean;
+    error?: string;
+  }> {
     const fileName = pdfFile.name;
     const fileResults = {};
 
@@ -141,13 +174,13 @@ export class PDFManager {
         totalPages: 0,
         results: fileResults,
         success: false,
-        error: err.message,
+        error: err instanceof Error ? err.message : "Unknown error",
       };
     }
   }
 }
 
 // Export a factory function for convenience
-export function createPDFManager(config = {}) {
+export function createPDFManager(config: PDFManagerConfig = {}): PDFManager {
   return new PDFManager(config);
 }

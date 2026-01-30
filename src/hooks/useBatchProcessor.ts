@@ -2,24 +2,68 @@ import { useState } from "react";
 import { createPDFManager } from "../PDFManager";
 import { LogWriter } from "../LogWriter";
 
+interface FileResult {
+  fileName: string;
+  success: boolean;
+  totalPages: number;
+  results: Record<string, unknown>;
+  error: string | null;
+}
+
+interface BatchProgress {
+  [fileName: string]: {
+    status: "processing" | "completed" | "failed" | "queued";
+    result: FileResult | null;
+  };
+}
+
+interface FilePageProgress {
+  [fileName: string]: {
+    currentPage: number;
+    totalPages: number;
+  };
+}
+
+interface SummaryStats {
+  totalPages: number;
+  successCount: number;
+  failedCount: number;
+}
+
+interface UseBatchProcessorReturn {
+  processing: boolean;
+  results: FileResult[];
+  currentBatch: File[];
+  batchProgress: BatchProgress;
+  filePageProgress: FilePageProgress;
+  currentFileIndex: number;
+  totalFiles: number;
+  processBatch: (selectedFiles: File[], onStart?: () => void, onComplete?: () => void) => Promise<void>;
+  getSummary: () => SummaryStats;
+  reset: () => void;
+}
+
 /**
  * useBatchProcessor - Custom hook for batch PDF processing
- * 
+ *
  * Single Responsibility: Manage batch processing state and logic
  * Only handles file processing - timer and logs directory managed separately (SRP)
- * 
+ *
  * @param {number} batchSize - Number of files to process in parallel
  * @param {FileSystemDirectoryHandle} logsDirectory - Directory handle for storing logs
- * @returns {Object} Batch processing state and methods
+ * @returns {UseBatchProcessorReturn} Batch processing state and methods
  */
-export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
+export const useBatchProcessor = (
+  batchSize: number = 5,
+  logsDirectory: FileSystemDirectoryHandle | null = null
+): UseBatchProcessorReturn => {
   // File processing state
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
-  const [results, setResults] = useState([]);
-  const [currentBatch, setCurrentBatch] = useState([]);
-  const [batchProgress, setBatchProgress] = useState({});
-  const [filePageProgress, setFilePageProgress] = useState({});
+  const [results, setResults] = useState<FileResult[]>([]);
+  const [currentBatch, setCurrentBatch] = useState<File[]>([]);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress>({});
+  const [filePageProgress, setFilePageProgress] = useState<FilePageProgress>({});
 
   // Counter state
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
@@ -28,7 +72,7 @@ export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
   /**
    * Process a single file with provided PDFManager instance
    */
-  const processFileWithManager = async (file, pdfManager) => {
+  const processFileWithManager = async (file: File, pdfManager: ReturnType<typeof createPDFManager>): Promise<FileResult> => {
     try {
       // Mark file as processing
       setBatchProgress((prev) => ({
@@ -78,12 +122,12 @@ export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
 
       return result;
     } catch (error) {
-      const result = {
+      const result: FileResult = {
         fileName: file.name,
         success: false,
         totalPages: 0,
         results: {},
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       };
 
       // Mark file as failed
@@ -107,7 +151,11 @@ export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
    * @param {Function} onStart - Callback when processing starts
    * @param {Function} onComplete - Callback when processing completes
    */
-  const processBatch = async (selectedFiles, onStart, onComplete) => {
+  const processBatch = async (
+    selectedFiles: File[],
+    onStart?: () => void,
+    onComplete?: () => void
+  ): Promise<void> => {
     if (selectedFiles.length === 0) {
       alert("No files selected");
       return;
@@ -157,7 +205,7 @@ export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
       }
     } catch (error) {
       console.error("Batch processing error:", error);
-      alert("Error during batch processing: " + error.message);
+      alert("Error during batch processing: " + (error instanceof Error ? error.message : String(error)));
     } finally {
       setProcessing(false);
       setCurrentBatch([]);
@@ -172,7 +220,7 @@ export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
   /**
    * Calculate summary statistics
    */
-  const getSummary = () => {
+  const getSummary = (): SummaryStats => {
     let totalPages = 0;
     let successCount = 0;
     let failedCount = 0;
@@ -192,7 +240,7 @@ export const useBatchProcessor = (batchSize = 5, logsDirectory = null) => {
   /**
    * Reset all state
    */
-  const reset = () => {
+  const reset = (): void => {
     setFiles([]);
     setProcessing(false);
     setResults([]);

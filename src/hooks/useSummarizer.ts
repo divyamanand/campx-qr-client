@@ -1,26 +1,49 @@
 import { useCallback } from "react";
 import { LogWriter } from "../LogWriter";
 
+interface FormattedSummary {
+  fileName: string;
+  totalCodesCount: number;
+  qrCodesCount: number;
+  barcodesCount: number;
+  codesOnEveryPage: number[];
+  hasErrors: boolean;
+}
+
+interface SummarizerResult {
+  summary: FormattedSummary[];
+  verification: {
+    filesToRetry: Record<string, number[]>;
+    bestCounts: Record<string, Record<string, number>>;
+  };
+}
+
+interface UseSummarizerReturn {
+  summarizeLogs: () => Promise<SummarizerResult>;
+  formatLogSummary: (fileName: string, fileLog: any) => FormattedSummary;
+  exportSummary: (summary: FormattedSummary[]) => Promise<FormattedSummary[]>;
+}
+
 /**
  * useSummarizer - Custom hook for summarizing processing logs
- * 
+ *
  * Single Responsibility: Handle log summarization and formatting
  * Separates summarization logic from processing logic (SRP)
- * 
+ *
  * @param {FileSystemDirectoryHandle} logsDirectory - Directory handle from LogWriter.selectLogsDirectory()
- * @returns {Object} Object containing:
+ * @returns {UseSummarizerReturn} Object containing:
  *   - summarizeLogs: Function to read and format logs
  *   - formatLogSummary: Function to format individual log entries
  */
-export const useSummarizer = (logsDirectory) => {
+export const useSummarizer = (logsDirectory: FileSystemDirectoryHandle | null): UseSummarizerReturn => {
   /**
    * Format a single log entry into summary format
    * Aggregates page-level data into file-level summary
    * @param {string} fileName - Name of the file
    * @param {Object} fileLog - Log data for the file (page-level results)
-   * @returns {Object} Formatted summary object
+   * @returns {FormattedSummary} Formatted summary object
    */
-  const formatLogSummary = useCallback((fileName, fileLog) => {
+  const formatLogSummary = useCallback((fileName: string, fileLog: any): FormattedSummary => {
     let totalCodesCount = 0;
     let qrCodesCount = 0;
     let barcodesCount = 0;
@@ -65,12 +88,12 @@ export const useSummarizer = (logsDirectory) => {
   /**
    * Read and summarize logs from LogWriter
    * Also verifies logs and identifies pages that need retry
-   * @returns {Promise<Object>} Object containing:
+   * @returns {Promise<SummarizerResult>} Object containing:
    *   - summary: Array of formatted log summaries
    *   - verification: { filesToRetry, bestCounts }
    * @throws {Error} If logsDirectory is not set
    */
-  const summarizeLogs = useCallback(async () => {
+  const summarizeLogs = useCallback(async (): Promise<SummarizerResult> => {
     try {
       if (!logsDirectory) {
         throw new Error("Logs directory not selected. Please select a logs directory first.");
@@ -109,14 +132,14 @@ export const useSummarizer = (logsDirectory) => {
 
   /**
    * Export summary to a file or display
-   * @param {Array} summary - Summary data to export
-   * @returns {Promise<void>}
+   * @param {FormattedSummary[]} summary - Summary data to export
+   * @returns {Promise<FormattedSummary[]>}
    */
-  const exportSummary = useCallback(async (summary) => {
+  const exportSummary = useCallback(async (summary: FormattedSummary[]): Promise<FormattedSummary[]> => {
     try {
       if (!summary || summary.length === 0) {
         console.warn("No summary data to export");
-        return;
+        return [];
       }
 
       // Could be extended to export to CSV, JSON, etc.

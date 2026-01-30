@@ -1,4 +1,22 @@
-import { readBarcodes } from "zxing-wasm/reader";
+import { readBarcodes, type ReadInputBarcodeFormat } from "zxing-wasm/reader";
+
+export interface ScannerOptions {
+  tryHarder?: boolean;
+  formats?: ReadInputBarcodeFormat[];
+  maxNumberOfSymbols?: number;
+}
+
+export interface BarcodeData {
+  data: string;
+  format: string;
+  position: unknown;
+}
+
+export interface ScanResult {
+  success: boolean;
+  codes: BarcodeData[];
+  error: string | null;
+}
 
 /**
  * ScanImage - Responsible for scanning image blobs for barcodes/QR codes
@@ -7,7 +25,13 @@ import { readBarcodes } from "zxing-wasm/reader";
  * with a clear pass/fail indicator.
  */
 export class ScanImage {
-  constructor(options = {}) {
+  readerOptions: {
+    tryHarder: boolean;
+    formats: ReadInputBarcodeFormat[];
+    maxNumberOfSymbols: number;
+  };
+
+  constructor(options: ScannerOptions = {}) {
     this.readerOptions = {
       tryHarder: options.tryHarder ?? true,
       formats: options.formats ?? ["QRCode", "Code128"],
@@ -20,7 +44,7 @@ export class ScanImage {
    * @param {Blob} blob - The image blob to scan
    * @returns {Promise<ScanResult>} - Scan result with pass/fail indicator
    */
-  async scan(blob) {
+  async scan(blob: Blob): Promise<ScanResult> {
     try {
       const results = await readBarcodes(blob, this.readerOptions);
 

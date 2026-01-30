@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useRef, useState, ChangeEvent } from "react"
 import { useBatchProcessor } from "./hooks/useBatchProcessor"
 import { useTimer } from "./hooks/useTimer"
 import { useLogsDirectory } from "./hooks/useLogsDirectory"
@@ -8,12 +8,12 @@ import "./App.css"
 
 /**
  * App Component - Main application UI
- * 
+ *
  * Single Responsibility: Render UI and handle user interactions
  * Logic separated into useBatchProcessor hook (SRP principle)
  */
 const App = () => {
-  const fileInputRef = useRef(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [showSummary, setShowSummary] = useState(false)
 
   // Separate hooks for different responsibilities (SRP)
@@ -31,13 +31,13 @@ const App = () => {
     totalFiles,
     processBatch,
     getSummary,
-  } = useBatchProcessor(3, logsDirectory) // Batch size of 3, pass logsDirectory
+  } = useBatchProcessor(8, logsDirectory) // Batch size of 3, pass logsDirectory
 
   /**
    * Handle file selection and start batch processing
    */
-  const handleFileSelect = async (e) => {
-    const selectedFiles = Array.from(e.target.files)
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const selectedFiles = Array.from(e.target.files || [])
     
     // Check if logs directory is selected
     if (!logsDirectory) {
@@ -353,7 +353,7 @@ const App = () => {
 }
 
 // Inline styles for layout elements
-const styles = {
+const styles: Record<string, Record<string, string | number>> = {
   progressContainer: {
     marginBottom: "2rem",
     marginTop: "1rem",
