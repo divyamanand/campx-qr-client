@@ -1,19 +1,54 @@
-import { useEffect, useState } from "react"
-import { useSummarizer } from "../hooks/useSummarizer"
-import "./Summary.css"
+import { FC, useEffect, useState } from 'react'
+import { useSummarizer } from '../hooks/useSummarizer'
+import './Summary.css'
+
+interface ProcessingResult {
+  fileName: string
+  success: boolean
+  totalPages?: number
+  error?: string
+}
+
+interface SummaryLog {
+  fileName: string
+  totalCodesCount?: number
+  qrCodesCount?: number
+  barcodesCount?: number
+  codesOnEveryPage?: number[]
+}
+
+interface VerificationData {
+  filesToRetry: Record<string, number[]>
+  bestCounts: Record<string, number>
+}
+
+interface SummaryProps {
+  results: ProcessingResult[]
+  elapsedTime: number
+  logsDirectory: FileSystemDirectoryHandle | null
+  onClose: () => void
+}
 
 /**
  * Summary Component - Displays processing results and log summaries
- * 
+ *
  * Single Responsibility: Display and format summary data
  * Uses useSummarizer hook for data formatting logic (SRP principle)
  */
-const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
-  const { summarizeLogs, formatLogSummary } = useSummarizer(logsDirectory)
-  const [summaryData, setSummaryData] = useState([])
-  const [verificationData, setVerificationData] = useState({ filesToRetry: {}, bestCounts: {} })
+const Summary: FC<SummaryProps> = ({
+  results,
+  elapsedTime,
+  logsDirectory,
+  onClose,
+}) => {
+  const { summarizeLogs } = useSummarizer(logsDirectory)
+  const [summaryData, setSummaryData] = useState<SummaryLog[]>([])
+  const [verificationData, setVerificationData] = useState<VerificationData>({
+    filesToRetry: {},
+    bestCounts: {},
+  })
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   // Load and format summary data when component mounts or results change
   useEffect(() => {
@@ -24,8 +59,8 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
         setSummaryData(summary)
         setVerificationData(verification)
       } catch (err) {
-        setError(err.message)
-        console.error("Failed to load summary:", err)
+        setError((err as Error).message)
+        console.error('Failed to load summary:', err)
       } finally {
         setLoading(false)
       }
@@ -60,19 +95,27 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
   }
 
   // Calculate aggregate statistics
-  const totalCodes = summaryData.reduce((sum, log) => sum + (log.totalCodesCount || 0), 0)
-  const totalQRCodes = summaryData.reduce((sum, log) => sum + (log.qrCodesCount || 0), 0)
-  const totalBarcodes = summaryData.reduce((sum, log) => sum + (log.barcodesCount || 0), 0)
+  const totalCodes = summaryData.reduce(
+    (sum, log) => sum + (log.totalCodesCount || 0),
+    0
+  )
+  const totalQRCodes = summaryData.reduce(
+    (sum, log) => sum + (log.qrCodesCount || 0),
+    0
+  )
+  const totalBarcodes = summaryData.reduce(
+    (sum, log) => sum + (log.barcodesCount || 0),
+    0
+  )
   const filesProcessed = summaryData.length
   const successCount = results.filter((r) => r.success).length
   const failedCount = results.filter((r) => !r.success).length
-  
+
   // Calculate retry statistics
   const filesToRetryCount = Object.keys(verificationData.filesToRetry).length
-  const totalPagesToRetry = Object.values(verificationData.filesToRetry).reduce(
-    (sum, pages) => sum + pages.length,
-    0
-  )
+  const totalPagesToRetry = Object.values(
+    verificationData.filesToRetry
+  ).reduce((sum, pages) => sum + pages.length, 0)
 
   return (
     <div className="summary-container">
@@ -82,7 +125,11 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
           <p className="summary-subtitle">Batch processing completed</p>
         </div>
         {onClose && (
-          <button onClick={onClose} className="summary-close-btn" title="Close summary">
+          <button
+            onClick={onClose}
+            className="summary-close-btn"
+            title="Close summary"
+          >
             ✕
           </button>
         )}
@@ -106,8 +153,10 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
           </div>
         </div>
 
-        <div className={`summary-stat-card ${failedCount > 0 ? "error" : ""}`}>
-          <div className="stat-icon">{failedCount > 0 ? "✕" : "✓"}</div>
+        <div
+          className={`summary-stat-card ${failedCount > 0 ? 'error' : ''}`}
+        >
+          <div className="stat-icon">{failedCount > 0 ? '✕' : '✓'}</div>
           <div className="stat-content">
             <div className="stat-value">{failedCount}</div>
             <div className="stat-label">Failed</div>
@@ -147,21 +196,23 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
         <div className="summary-retry-section">
           <h3>⚠️ Pages Requiring Retry</h3>
           <p className="retry-description">
-            {filesToRetryCount} file{filesToRetryCount > 1 ? 's' : ''} with {totalPagesToRetry} page
-            {totalPagesToRetry > 1 ? 's' : ''} need to be reprocessed due to code count mismatches.
+            {filesToRetryCount} file{filesToRetryCount > 1 ? 's' : ''} with{' '}
+            {totalPagesToRetry} page
+            {totalPagesToRetry > 1 ? 's' : ''} need to be reprocessed due to
+            code count mismatches.
           </p>
           <div className="retry-list">
-            {Object.entries(verificationData.filesToRetry).map(([fileName, pages]) => (
-              <div key={fileName} className="retry-item">
-                <div className="retry-filename">
-                  <span className="retry-icon">🔄</span>
-                  {fileName}
+            {Object.entries(verificationData.filesToRetry).map(
+              ([fileName, pages]) => (
+                <div key={fileName} className="retry-item">
+                  <div className="retry-filename">
+                    <span className="retry-icon">🔄</span>
+                    {fileName}
+                  </div>
+                  <div className="retry-pages">Pages: {pages.join(', ')}</div>
                 </div>
-                <div className="retry-pages">
-                  Pages: {pages.join(", ")}
-                </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         </div>
       )}
@@ -194,17 +245,23 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
                 {summaryData.map((log, index) => (
                   <tr key={index} className="summary-table-row">
                     <td className="filename-cell">{log.fileName}</td>
-                    <td className="text-center">{log.totalCodesCount || 0}</td>
                     <td className="text-center">
-                      <span className="badge qr-badge">{log.qrCodesCount || 0}</span>
+                      {log.totalCodesCount || 0}
                     </td>
                     <td className="text-center">
-                      <span className="badge barcode-badge">{log.barcodesCount || 0}</span>
+                      <span className="badge qr-badge">
+                        {log.qrCodesCount || 0}
+                      </span>
+                    </td>
+                    <td className="text-center">
+                      <span className="badge barcode-badge">
+                        {log.barcodesCount || 0}
+                      </span>
                     </td>
                     <td className="text-center">
                       {log.codesOnEveryPage && log.codesOnEveryPage.length > 0
-                        ? log.codesOnEveryPage.join(", ")
-                        : "—"}
+                        ? log.codesOnEveryPage.join(', ')
+                        : '—'}
                     </td>
                   </tr>
                 ))}
@@ -221,7 +278,7 @@ const Summary = ({ results, elapsedTime, logsDirectory, onClose }) => {
             // Copy summary to clipboard
             const summaryText = `Processing Summary\nFiles: ${filesProcessed}\nSuccessful: ${successCount}\nFailed: ${failedCount}\nTotal Codes: ${totalCodes}\nQR Codes: ${totalQRCodes}\nBarcodes: ${totalBarcodes}\nTime: ${elapsedTime}s`
             navigator.clipboard.writeText(summaryText)
-            alert("Summary copied to clipboard!")
+            alert('Summary copied to clipboard!')
           }}
           className="summary-btn summary-btn-copy"
         >
